@@ -1,0 +1,11 @@
+web/node_modules/
+backend/web-dist/
+web-dist/
+dist/
+data/
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
+.idea/
+*.tsbuildinfo
