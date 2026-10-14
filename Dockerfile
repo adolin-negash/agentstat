@@ -18,7 +18,8 @@ RUN npm run build --prefix web
 COPY backend/ ./backend/
 COPY Makefile ./
 
-RUN mkdir -p dist && go build -trimpath -ldflags="-s -w" -o dist/agentstat ./backend
+ARG VERSION=dev
+RUN mkdir -p dist && go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o dist/agentstat ./backend
 
 FROM debian:bookworm-slim
 

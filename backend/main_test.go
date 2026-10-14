@@ -98,6 +98,32 @@ func TestDashboardMultipleProjects(t *testing.T) {
 	}
 }
 
+func TestParseFiltersRejectsInvalidValues(t *testing.T) {
+	for _, check := range []struct {
+		name, query, message string
+	}{
+		{"non-numeric source", "?source=codex", "invalid source"},
+		{"zero source", "?source=0", "invalid source"},
+		{"negative source", "?source=-1", "invalid source"},
+		{"invalid end", "?to=tomorrow", "invalid to"},
+		{"reversed range", "?from=2000&to=1000", "from must precede to"},
+	} {
+		t.Run(check.name, func(t *testing.T) {
+			_, err := parseFilters(httptest.NewRequest("GET", "/api/dashboard"+check.query, nil))
+			if err == nil || err.Error() != check.message {
+				t.Fatalf("query=%q error=%v, want %q", check.query, err, check.message)
+			}
+		})
+	}
+	filters, err := parseFilters(httptest.NewRequest("GET", "/api/dashboard?source=1&source=2&project=p1&project=p2&model=a&model=b&name=%20Find%20&from=1000&to=2000", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filters.Sources) != 2 || !filters.Sources[1] || !filters.Sources[2] || len(filters.Projects) != 2 || !filters.Projects["p1"] || !filters.Projects["p2"] || len(filters.Models) != 2 || !filters.Models["a"] || !filters.Models["b"] || filters.Name != "Find" || filters.From != 1000 || filters.To != 2000 {
+		t.Fatalf("parsed filters = %+v", filters)
+	}
+}
+
 func TestImportAndModelFilter(t *testing.T) {
 	dir := t.TempDir()
 	source := filepath.Join(dir, "source.db")
@@ -234,6 +260,9 @@ func TestImportAndModelFilter(t *testing.T) {
 			check.handler(recorder, httptest.NewRequest(check.method, check.path, nil))
 			if recorder.Code != check.status || !strings.Contains(recorder.Body.String(), check.body) {
 				t.Fatalf("status=%d body=%q", recorder.Code, recorder.Body.String())
+			}
+			if check.name == "status" && !strings.Contains(recorder.Body.String(), `"version":"`+version+`"`) {
+				t.Fatalf("status omits app version: %q", recorder.Body.String())
 			}
 		})
 	}

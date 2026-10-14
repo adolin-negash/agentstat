@@ -1,12 +1,14 @@
 # Agent Stats
 
-Agent Stats is a local dashboard for OpenCode, Codex, GitHub Copilot IDEA, and Kilo Code agent history. A Go
+Agent Stats is a local dashboard for OpenCode, Codex, GitHub Copilot IDEA, and Kilo Code agent
+history. A Go
 server reads source histories and copies them into its own SQLite database. A Preact interface lets
 you explore sessions, ordered actions, and token use. Source files are never changed.
 
 ## Main features
 
-- **Four sources in one view:** import OpenCode and Kilo Code SQLite sessions, Codex JSONL rollouts, and GitHub
+- **Four sources in one view:** import OpenCode and Kilo Code SQLite sessions, Codex JSONL rollouts,
+  and GitHub
   Copilot IDEA agent journals. Import runs at startup, from **Refresh data**, or through a headless
   command.
 - **Usage overview:** see session and token totals, uncached input, output, and cache reads and
@@ -22,6 +24,10 @@ you explore sessions, ordered actions, and token use. Source files are never cha
 - **Local interface:** switch between the default violet and Claude Code inspired themes. The choice
   is saved in the browser. Empty histories and import issues are shown in the UI. The production UI
   is embedded in the executable.
+- **Automated checks and releases:** GitHub Actions tests backend and frontend with coverage, builds
+  binaries for Windows, macOS, and Linux on Intel/AMD 64-bit and ARM64, and publishes them for `v*`
+  tags.
+- **App version:** the web footer and `agentstat -version` show the same executable version.
 
 ## Requirements
 
@@ -50,6 +56,9 @@ Build the image:
 docker build -t agentstat .
 ```
 
+The Docker build defaults to version `dev`. Pass a version when building a tagged image, for example
+`docker build --build-arg VERSION=v1.0.0 -t agentstat:v1.0.0 .`.
+
 Run the container, mounting your source directories and a data volume for the app database:
 
 ```sh
@@ -66,14 +75,14 @@ docker run -d \
 
 Open <http://127.0.0.1:8080>. The container uses these defaults (override with `-e`):
 
-| Environment variable | Default | Purpose |
-|----------------------|---------|---------|
-| `OPENCODE_DB` | `/sources/opencode/opencode.db` | OpenCode SQLite database |
-| `CODEX_SESSIONS` | `/sources/codex` | Codex sessions directory |
-| `COPILOT_SESSIONS` | `/sources/copilot` | Copilot IDEA session-state directory |
-| `KILO_DB` | `/sources/kilo/kilo.db` | Kilo Code SQLite database |
-| `AGENTSTAT_DB` | `/data/agentstat.db` | App SQLite database |
-| `AGENTSTAT_ADDR` | `0.0.0.0:8080` | HTTP listen address |
+| Environment variable | Default                         | Purpose                              |
+|----------------------|---------------------------------|--------------------------------------|
+| `OPENCODE_DB`        | `/sources/opencode/opencode.db` | OpenCode SQLite database             |
+| `CODEX_SESSIONS`     | `/sources/codex`                | Codex sessions directory             |
+| `COPILOT_SESSIONS`   | `/sources/copilot`              | Copilot IDEA session-state directory |
+| `KILO_DB`            | `/sources/kilo/kilo.db`         | Kilo Code SQLite database            |
+| `AGENTSTAT_DB`       | `/data/agentstat.db`            | App SQLite database                  |
+| `AGENTSTAT_ADDR`     | `0.0.0.0:8080`                  | HTTP listen address                  |
 
 Example with custom paths:
 
@@ -133,9 +142,11 @@ Flags override environment variables. If neither is set, the default applies.
 | `-kilo-source`    | `KILO_DB`            | `~/.local/share/kilo/kilo.db`                  | Kilo Code SQLite database path.                                         |
 | `-db`             | `AGENTSTAT_DB`       | User config directory/`agentstat/agentstat.db` | App-owned SQLite database. Its parent directory is created if needed.   |
 | `-addr`           | `AGENTSTAT_ADDR`     | `127.0.0.1:8080`                               | HTTP listen address. The default accepts local connections only.        |
+| `-version`        | None                 | `dev` for local builds                         | Print the embedded app version and exit without starting the server.    |
 
 ```sh
 ./dist/agentstat -source /path/to/opencode.db -codex-source /path/to/codex/sessions -copilot-source /path/to/session-state -kilo-source /path/to/kilo.db -db /path/to/agentstat.db -addr 127.0.0.1:8080
+./dist/agentstat -version
 ```
 
 Pass an empty source path to skip that source in server mode, for example `-copilot-source ''`. A
@@ -149,14 +160,14 @@ Use `./dist/agentstat import [flags]` to import and exit without starting the se
 has its own flags: **`--source` selects source names here**, while `-source` in server mode is the
 OpenCode database path.
 
-| Flag                | Environment variable | Default                                        | Purpose                                                                                                                                 |
-|---------------------|----------------------|------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|
+| Flag                | Environment variable | Default                                        | Purpose                                                                                                                                         |
+|---------------------|----------------------|------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|
 | `--source`          | None                 | All four sources                               | Select `opencode`, `codex`, `copilot`, `kilo`, or a comma-separated combination. Spaces around names are ignored; duplicates are imported once. |
-| `--opencode-source` | `OPENCODE_DB`        | `~/.local/share/opencode/opencode.db`          | OpenCode SQLite database path.                                                                                                          |
-| `--codex-source`    | `CODEX_SESSIONS`     | `~/.codex/sessions`                            | Codex sessions directory.                                                                                                               |
-| `--copilot-source`  | `COPILOT_SESSIONS`   | `~/.copilot/session-state`                     | GitHub Copilot IDEA session-state directory.                                                                                            |
-| `--kilo-source`     | `KILO_DB`            | `~/.local/share/kilo/kilo.db`                  | Kilo Code SQLite database path.                                                                                                         |
-| `--db`              | `AGENTSTAT_DB`       | User config directory/`agentstat/agentstat.db` | App-owned SQLite database path.                                                                                                         |
+| `--opencode-source` | `OPENCODE_DB`        | `~/.local/share/opencode/opencode.db`          | OpenCode SQLite database path.                                                                                                                  |
+| `--codex-source`    | `CODEX_SESSIONS`     | `~/.codex/sessions`                            | Codex sessions directory.                                                                                                                       |
+| `--copilot-source`  | `COPILOT_SESSIONS`   | `~/.copilot/session-state`                     | GitHub Copilot IDEA session-state directory.                                                                                                    |
+| `--kilo-source`     | `KILO_DB`            | `~/.local/share/kilo/kilo.db`                  | Kilo Code SQLite database path.                                                                                                                 |
+| `--db`              | `AGENTSTAT_DB`       | User config directory/`agentstat/agentstat.db` | App-owned SQLite database path.                                                                                                                 |
 
 ```sh
 ./dist/agentstat import --source codex --codex-source /path/to/codex/sessions
@@ -194,7 +205,7 @@ The UI uses these endpoints on the address set by `-addr`.
 
 | Endpoint                 | Description                                                                                                                                       |
 |--------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------|
-| `GET /api/status`        | Configured source paths, last successful import time, latest import issue, and total indexed sessions.                                            |
+| `GET /api/status`        | App version, configured source paths, last successful import time, latest import issue, and total indexed sessions.                               |
 | `POST /api/import`       | Scan configured sources again, then return status. Returns an error if no source imports successfully.                                            |
 | `GET /api/options`       | Available projects (`id`, `name`), model names, folders (`id`, `path`), and sources (`id`, `name`). Use these IDs for filters and session labels. |
 | `GET /api/dashboard`     | Filtered sessions, summary totals, and daily chart bars.                                                                                          |
@@ -202,14 +213,14 @@ The UI uses these endpoints on the address set by `-addr`.
 
 `/api/dashboard` accepts these query parameters. Omitted parameters do not restrict results.
 
-| Parameter | Format and effect                                                                                                                                  |
-|-----------|----------------------------------------------------------------------------------------------------------------------------------------------------|
-| `from`    | Unix timestamp in **milliseconds**, inclusive. Filters session start time.                                                                         |
-| `to`      | Unix timestamp in **milliseconds**, exclusive. Filters session start time. `from` greater than `to` returns HTTP 400.                              |
-| `project` | Project **ID** from `/api/options`, not its display name. Repeat for multiple projects.                                                            |
+| Parameter | Format and effect                                                                                                                                         |
+|-----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `from`    | Unix timestamp in **milliseconds**, inclusive. Filters session start time.                                                                                |
+| `to`      | Unix timestamp in **milliseconds**, exclusive. Filters session start time. `from` greater than `to` returns HTTP 400.                                     |
+| `project` | Project **ID** from `/api/options`, not its display name. Repeat for multiple projects.                                                                   |
 | `source`  | Positive numeric source **ID** from `/api/options`, not `opencode`/`codex`/`copilot`/`kilo`. Repeat for multiple sources. Invalid values return HTTP 400. |
-| `model`   | Exact model name from `/api/options`. Repeat for multiple models.                                                                                  |
-| `name`    | Case-insensitive title substring, trimmed at both ends; at most 200 Unicode characters. An invalid value returns HTTP 400.                         |
+| `model`   | Exact model name from `/api/options`. Repeat for multiple models.                                                                                         |
+| `name`    | Case-insensitive title substring, trimmed at both ends; at most 200 Unicode characters. An invalid value returns HTTP 400.                                |
 
 Example (replace the IDs and timestamps with values from your data):
 
@@ -222,18 +233,19 @@ when requesting `/api/sessions/{id}`. Invalid `from`, `to`, or `source` values r
 
 ## Source data and token accounting
 
-| Source              | Imported data                                                                                                                                                                                 | Limits                                                                                                                                                                                        |
-|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| OpenCode            | SQLite `session` / `message` / `part` and `session_v2` / `session_message` schemas; messages, tools, available compaction summaries, failures, aborts, and agent switches.                    | Older JSON-file storage is unsupported. Its permission table records project rules, so it cannot reliably reconstruct session permission requests.                                            |
-| Codex               | JSONL rollout metadata, user and assistant messages, tools and results, available reasoning summaries, compaction, explicit permission requests, aborts, errors, and cumulative token events. | System and developer messages and encrypted reasoning are skipped. Context-window size alone is not treated as a token-limit failure.                                                         |
-| GitHub Copilot IDEA | Journals under `session-state` whose `workspace.yaml` has `client_name: copilot-intellij`; prompts, replies, saved reasoning, tools, permission requests, aborts, and recorded output tokens. | The journals do not provide input, reasoning, or cache token counts, so those categories show zero. Older JetBrains Nitrite/Xodus stores and Copilot CLI or VS Code sessions are unsupported. |
-| Kilo Code           | Local SQLite `session` / `message` / `part` records from current Kilo CLI and IDE integrations; message text, tool calls and results, and assistant token counts by model. | Legacy Kilo VS Code extension JSON task directories and cloud-only sessions are unsupported. Session totals sum recorded assistant usage; missing token categories remain zero. |
+| Source              | Imported data                                                                                                                                                                                                                                                                                                        | Limits                                                                                                                                                                                        |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| OpenCode            | SQLite `session` / `message` / `part` and `session_v2` / `session_message` schemas; messages, tools, available compaction summaries, failures, aborts, and agent switches.                                                                                                                                           | Older JSON-file storage is unsupported. Its permission table records project rules, so it cannot reliably reconstruct session permission requests.                                            |
+| Codex               | JSONL rollout metadata, user and assistant messages, tools and results, available reasoning summaries, compaction, explicit permission requests, aborts, errors, and cumulative token events.                                                                                                                        | System and developer messages and encrypted reasoning are skipped. Context-window size alone is not treated as a token-limit failure.                                                         |
+| GitHub Copilot IDEA | Journals under `session-state` whose `workspace.yaml` has `client_name: copilot-intellij`; workspace session names (including multiline YAML names), prompts, replies, saved reasoning, tools, permission requests, aborts, and recorded output tokens. When the name is empty, the first prompt supplies the title. | The journals do not provide input, reasoning, or cache token counts, so those categories show zero. Older JetBrains Nitrite/Xodus stores and Copilot CLI or VS Code sessions are unsupported. |
+| Kilo Code           | Local SQLite `session` / `message` / `part` records from current Kilo CLI and IDE integrations; message text, tool calls and results, and assistant token counts by model.                                                                                                                                           | Legacy Kilo VS Code extension JSON task directories and cloud-only sessions are unsupported. Session totals sum recorded assistant usage; missing token categories remain zero.               |
 
 OpenCode session totals come from session records. Model filtering uses assistant-message usage and
 attributes session totals to the session model when message-level usage is absent. Codex cumulative
 events are converted to differences, separating cached input from input and reasoning from output.
 Model attribution follows the latest turn context. Copilot IDEA uses each reply's recorded model and
-output tokens. Kilo Code sums each assistant message's recorded usage by model. `Unknown` represents usage without a known model. Token categories reflect source
+output tokens. Kilo Code sums each assistant message's recorded usage by model. `Unknown` represents
+usage without a known model. Token categories reflect source
 records; the app does not track prices, provider quotas, or live activity.
 
 For Kilo Code, `kilo db path` prints the database selected by its current environment. Set
@@ -269,10 +281,25 @@ make
 ```
 
 The default Make target builds the frontend, runs Go formatting and vet, frontend ESLint, TypeScript
-and Prettier checks, the 65% Go coverage gate and Go tests, then builds `dist/agentstat`. The binary
+and Prettier checks, 75% Go and frontend statement coverage gates and Go tests, then builds
+`dist/agentstat`. The binary
 is built only after the checks pass. Use `make check` to run the checks without building the binary,
-or `make build` to build it without running the checks. Build the frontend before running Go commands
+or `make build` to build it without running the checks. Build the frontend before running Go
+commands
 directly in a fresh checkout because the Go package embeds it.
+
+GitHub Actions runs the same checks for pull requests and pushes to `main`, and stores a Go coverage
+profile/HTML report and frontend LCOV/JSON summary as a workflow artifact. It builds native binaries
+with CGO enabled on six runners; each workflow run keeps the archives as artifacts. Push a version
+tag
+such as `v1.0.0` to create a GitHub Release with `agentstat-{linux,darwin}-{amd64,arm64}.tar.gz`
+and `agentstat-windows-{amd64,arm64}.zip`. Release archives contain the executable with the UI
+embedded
+and report their tag through `-version` and the web footer. Local `make` builds report `dev` by
+default;
+use `make VERSION=v1.0.0` to set another version.
+Windows ARM64 needs an ARM64 Windows system; macOS and Linux archives are likewise architecture
+specific.
 
 When changing or adding a feature, update this README's relevant feature, setup, CLI, API, filter,
 or limitation sections and keep [PLAN.md](PLAN.md) acceptance criteria current. Contributor guidance

@@ -245,7 +245,8 @@ function App() {
           />
         )}
         <footer>
-          Agent Stats · Local SQLite copy{" "}
+          Agent Stats{status?.version ? ` ${status.version}` : ""} · Local
+          SQLite copy{" "}
           {status?.lastImport && status.lastImport !== "0001-01-01T00:00:00Z"
             ? `· Imported ${date(status.lastImport)}`
             : ""}

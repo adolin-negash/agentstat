@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -29,11 +30,15 @@ func copilotWorkspace(path string) (map[string]string, error) {
 	values := map[string]string{}
 	scanner := bufio.NewScanner(file)
 	blockKey := ""
+	blockStyle := ""
 	for scanner.Scan() {
 		line := scanner.Text()
 		if blockKey != "" && (strings.HasPrefix(line, "  ") || line == "") {
 			values[blockKey] += strings.TrimPrefix(line, "  ") + "\n"
 			continue
+		}
+		if blockKey != "" && strings.HasSuffix(blockStyle, "-") {
+			values[blockKey] = strings.TrimRight(values[blockKey], "\n")
 		}
 		blockKey = ""
 		key, value, ok := strings.Cut(line, ":")
@@ -41,11 +46,22 @@ func copilotWorkspace(path string) (map[string]string, error) {
 			continue
 		}
 		value = strings.TrimSpace(value)
-		if value == "|" || value == ">" {
+		if value == "|" || value == "|-" || value == "|+" || value == ">" || value == ">-" || value == ">+" {
 			blockKey = key
+			blockStyle = value
 			continue
 		}
-		values[key] = strings.Trim(value, "\"'")
+		if strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"") {
+			if unquoted, err := strconv.Unquote(value); err == nil {
+				value = unquoted
+			}
+		} else if strings.HasPrefix(value, "'") && strings.HasSuffix(value, "'") {
+			value = strings.ReplaceAll(value[1:len(value)-1], "''", "'")
+		}
+		values[key] = value
+	}
+	if blockKey != "" && strings.HasSuffix(blockStyle, "-") {
+		values[blockKey] = strings.TrimRight(values[blockKey], "\n")
 	}
 	return values, scanner.Err()
 }

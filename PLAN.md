@@ -31,12 +31,13 @@ Follow-up work: add JSON-file source support for older OpenCode installations, i
 ## Maintainability checks
 
 - Keep startup, source imports, repository queries and migrations, service business rules, API handlers, and shared models in focused Go files under `backend/`. The repository owns app SQLite access and read-only OpenCode queries; the service owns import coordination, filtering, and dashboard aggregation. Keep the Go module at the repository root so `go test ./...` covers the backend.
-- Run `make` to build the frontend, run Go formatting and vet, frontend ESLint, TypeScript and formatting checks, a 65% minimum Go statement coverage gate, and Go tests before building the distributable executable. `make check` runs validation without the final binary build.
+- Run `make` to build the frontend, run Go formatting and vet, frontend ESLint, TypeScript and formatting checks, 75% minimum Go and frontend statement coverage gates, and Go tests before building the distributable executable. `make check` runs validation without the final binary build.
+- GitHub Actions runs these checks on pull requests and pushes, saves Go and frontend coverage reports, and builds native CGO binaries for Windows, macOS, and Linux on amd64 and arm64 runners. A `v*` tag publishes all six archives only after checks and builds pass.
 
 ## Acceptance criteria
 
 - Starting the server with an OpenCode SQLite source, Codex sessions directory, or Copilot IDEA agent journal directory creates a separate SQLite database and returns imported sessions.
-- Copilot import includes only IDEA-owned journals, preserves their session IDs and event order, attributes recorded output tokens to each message's model, and shows unavailable token categories as zero.
+- Copilot import includes only IDEA-owned journals, preserves their session IDs, YAML workspace names, and event order, attributes recorded output tokens to each message's model, and shows unavailable token categories as zero.
 - Kilo Code import reads its SQLite database without writing to it, prefixes session, project, message, and part IDs to avoid collisions, preserves chronological actions, and attributes recorded assistant tokens by model.
 - Every imported session references a project row. Project filters use its ID; the options response supplies the name used in session details, and a project rename follows the latest imported session update.
 - Every imported session references model, folder, and source rows, and usage references model rows. Session API responses use project, folder, and source IDs; the options response exposes their original names and paths for display. Model names remain available in session and usage responses.
@@ -67,4 +68,6 @@ Follow-up work: add JSON-file source support for older OpenCode installations, i
 - An empty or unavailable source has an actionable UI state and does not crash the server.
 - Running without a command keeps the startup import and web server. `import` runs without a server, reports the number of newly added sessions, and preserves imported sessions, actions, and usage records that later disappear from a source.
 - A distribution build embeds the production UI in one Go executable. It serves the UI from any working directory without a separate frontend folder, and stores its default app database in the user's configuration directory. The headless `import` command remains available in the same executable.
-- The maintainability checks pass, including the Go coverage floor.
+- `agentstat -version` prints the executable's version without starting the server or opening a database. The web UI shows the same version from `/api/status`; local builds default to `dev`, and tagged release binaries use their tag.
+- The maintainability checks pass, including 75% statement coverage floors for Go and frontend code.
+- CI publishes coverage artifacts for both backend and frontend. Tagged releases contain working binaries with the embedded UI for Windows, macOS, and Linux on amd64 and arm64.

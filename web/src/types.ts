@@ -48,6 +48,7 @@ export type Options = {
   sources: { id: number; name: string }[];
 };
 export type Status = {
+  version: string;
   source: string;
   codexSource: string;
   copilotSource: string;

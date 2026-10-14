@@ -1,9 +1,11 @@
 #!/bin/sh
 set -eu
 
-minimum=65
-profile=$(mktemp)
-trap 'rm -f "$profile"' EXIT
+minimum=75
+profile=${GO_COVERAGE_PROFILE:-$(mktemp)}
+if [ -z "${GO_COVERAGE_PROFILE:-}" ]; then
+  trap 'rm -f "$profile"' EXIT
+fi
 go test -coverprofile="$profile" ./backend
 go tool cover -func="$profile" | awk -v minimum="$minimum" '
   $1 == "total:" {

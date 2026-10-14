@@ -15,6 +15,9 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+// version is set by release builds. Local builds use dev unless overridden.
+var version = "dev"
+
 //go:embed web-dist
 var webFiles embed.FS
 
@@ -51,7 +54,12 @@ func main() {
 	kiloSource := flag.String("kilo-source", env("KILO_DB", filepath.Join(home, ".local/share/kilo/kilo.db")), "Kilo Code SQLite database")
 	database := flag.String("db", env("AGENTSTAT_DB", defaultDatabasePath()), "app SQLite database")
 	addr := flag.String("addr", env("AGENTSTAT_ADDR", "127.0.0.1:8080"), "listen address")
+	showVersion := flag.Bool("version", false, "print the app version and exit")
 	flag.Parse()
+	if *showVersion {
+		fmt.Println("agentstat " + version)
+		return
+	}
 	if err := os.MkdirAll(filepath.Dir(*database), 0700); err != nil {
 		log.Fatal(err)
 	}

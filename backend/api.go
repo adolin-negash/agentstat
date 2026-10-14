@@ -22,7 +22,7 @@ func (a *App) status(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"source": a.source, "codexSource": a.codexSource, "copilotSource": a.copilotSource, "kiloSource": a.kiloSource, "lastImport": a.lastImport, "importError": a.importErr, "sessions": count})
+	writeJSON(w, http.StatusOK, map[string]any{"version": version, "source": a.source, "codexSource": a.codexSource, "copilotSource": a.copilotSource, "kiloSource": a.kiloSource, "lastImport": a.lastImport, "importError": a.importErr, "sessions": count})
 }
 func (a *App) refresh(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {

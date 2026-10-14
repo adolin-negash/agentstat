@@ -1,0 +1,140 @@
+name: Test and release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --prefix web
+      - name: Lint, test, and measure coverage
+        run: |
+          mkdir -p coverage
+          GO_COVERAGE_PROFILE=coverage/backend.out make check
+          go tool cover -html=coverage/backend.out -o coverage/backend.html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          if-no-files-found: error
+          path: |
+            coverage/backend.out
+            coverage/backend.html
+            web/coverage/lcov.info
+            web/coverage/coverage-summary.json
+
+  binaries:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            os: linux
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            os: linux
+            arch: arm64
+          - runner: macos-15-intel
+            os: darwin
+            arch: amd64
+          - runner: macos-15
+            os: darwin
+            arch: arm64
+          - runner: windows-2022
+            os: windows
+            arch: amd64
+          - runner: windows-11-arm
+            os: windows
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    env:
+      CGO_ENABLED: "1"
+      APP_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'dev' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --prefix web
+      - run: npm run build --prefix web
+      - name: Build and package Unix binary
+        if: matrix.os != 'windows'
+        shell: bash
+        run: |
+          test "$(go env GOOS)" = "${{ matrix.os }}"
+          test "$(go env GOARCH)" = "${{ matrix.arch }}"
+          mkdir -p dist
+          go build -trimpath -ldflags="-s -w -X main.version=$APP_VERSION" -o dist/agentstat ./backend
+          test "$(./dist/agentstat -version)" = "agentstat $APP_VERSION"
+          mkdir -p "$RUNNER_TEMP/empty-sessions"
+          ./dist/agentstat import --source codex --codex-source "$RUNNER_TEMP/empty-sessions" --db "$RUNNER_TEMP/agentstat-smoke.db"
+          tar -C dist -czf "agentstat-${{ matrix.os }}-${{ matrix.arch }}.tar.gz" agentstat
+      - name: Build and package Windows binary
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          if ((go env GOOS) -ne 'windows' -or (go env GOARCH) -ne '${{ matrix.arch }}') { throw 'Unexpected Go target' }
+          if ('${{ matrix.arch }}' -eq 'arm64') {
+            $env:PATH = "C:\msys64\clangarm64\bin;$env:PATH"
+            $env:CC = 'clang'
+          } else {
+            $env:PATH = "C:\msys64\ucrt64\bin;$env:PATH"
+            $env:CC = 'gcc'
+          }
+          & $env:CC --version
+          New-Item -ItemType Directory -Force dist | Out-Null
+          go build -trimpath "-ldflags=-s -w -X main.version=$env:APP_VERSION" -o dist/agentstat.exe ./backend
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ((.\dist\agentstat.exe -version) -ne "agentstat $env:APP_VERSION") { throw 'Unexpected app version' }
+          $emptySessions = Join-Path $env:RUNNER_TEMP 'empty-sessions'
+          New-Item -ItemType Directory -Force $emptySessions | Out-Null
+          .\dist\agentstat.exe import --source codex --codex-source $emptySessions --db (Join-Path $env:RUNNER_TEMP 'agentstat-smoke.db')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Compress-Archive -Path dist/agentstat.exe -DestinationPath 'agentstat-windows-${{ matrix.arch }}.zip'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.os }}-${{ matrix.arch }}
+          path: agentstat-${{ matrix.os }}-${{ matrix.arch }}.*
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: binaries
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: binary-*
+          path: release
+          merge-multiple: true
+      - name: Publish tagged release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release create "${GITHUB_REF_NAME}" release/* --generate-notes --verify-tag

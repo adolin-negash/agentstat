@@ -21,8 +21,9 @@ cwd: /work/example/subdir
 git_root: /work/example
 repository: example
 client_name: copilot-intellij
-name: |
+name: |-
   Review this change
+  Check the tests
 created_at: 2026-01-01T10:00:00Z
 updated_at: 2026-01-01T10:00:10Z
 `
@@ -68,7 +69,7 @@ updated_at: 2026-01-01T10:00:10Z
 		t.Fatalf("sessions=%+v err=%v", sessions, err)
 	}
 	s := sessions[0]
-	if s.ID != "copilot:idea-123" || s.ProjectID != "copilot:/work/example" || s.Title != "Review this change" || s.Tokens.Output != 18 || s.Tokens.Input != 0 {
+	if s.ID != "copilot:idea-123" || s.ProjectID != "copilot:/work/example" || s.Title != "Review this change\nCheck the tests" || s.Tokens.Output != 18 || s.Tokens.Input != 0 {
 		t.Fatalf("session=%+v", s)
 	}
 	filtered, err := app.filtered(Filters{Models: map[string]bool{"model-b": true}})
@@ -78,5 +79,29 @@ updated_at: 2026-01-01T10:00:10Z
 	detail, err := app.service().Detail(s.ID)
 	if err != nil || len(detail.Actions) != 6 || detail.Actions[2].Kind != "tool" || !strings.Contains(detail.Actions[2].Output, "package main") || detail.Actions[4].Status != "approved" || detail.Actions[5].Kind != "abort" {
 		t.Fatalf("detail=%+v err=%v", detail, err)
+	}
+}
+
+func TestCopilotWorkspaceNames(t *testing.T) {
+	tests := []struct {
+		name string
+		want string
+	}{
+		{`name: |-` + "\n  First line\n\n  Second line\n", "First line\n\nSecond line"},
+		{`name: "Plan \"A\"\nNext"` + "\n", "Plan \"A\"\nNext"},
+		{`name: 'Bob''s plan'` + "\n", "Bob's plan"},
+	}
+	for _, test := range tests {
+		path := filepath.Join(t.TempDir(), "workspace.yaml")
+		if err := os.WriteFile(path, []byte(test.name), 0600); err != nil {
+			t.Fatal(err)
+		}
+		values, err := copilotWorkspace(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if values["name"] != test.want {
+			t.Errorf("name = %q, want %q", values["name"], test.want)
+		}
 	}
 }
