@@ -32,7 +32,9 @@ you explore sessions, ordered actions, and token use. Source files are never cha
 ## Requirements
 
 - To build: Go 1.22.5 or later, a C compiler, Node.js 20 or later, and npm. The SQLite driver uses
-  CGO, so build with CGO enabled on each target platform.
+  CGO, so build with CGO enabled on each target platform. Windows ARM64 builds need an ARM64 MinGW
+  compiler (such as MSYS2 CLANGARM64); the MSVC-targeted LLVM compiler does not support Go's CGO
+  flags. CI installs the MSYS2 compiler explicitly.
 - To run a built executable: no Go or Node.js installation is needed. The target system still needs
   the platform's standard C runtime for the SQLite driver.
 - At least one supported source history for a populated dashboard.
@@ -289,8 +291,9 @@ commands
 directly in a fresh checkout because the Go package embeds it.
 
 GitHub Actions runs the same checks for pull requests and pushes to `main`, and stores a Go coverage
-profile/HTML report and frontend LCOV/JSON summary as a workflow artifact. It builds native binaries
-with CGO enabled on six runners; each workflow run keeps the archives as artifacts. Push a version
+profile/HTML report and frontend LCOV/JSON summary as a workflow artifact. The check job builds the
+frontend once and uploads `backend/web-dist/` as an artifact; all six native CGO binary jobs download
+that same build for embedding. Each workflow run keeps the archives as artifacts. Push a version
 tag
 such as `v1.0.0` to create a GitHub Release with `agentstat-{linux,darwin}-{amd64,arm64}.tar.gz`
 and `agentstat-windows-{amd64,arm64}.zip`. Release archives contain the executable with the UI

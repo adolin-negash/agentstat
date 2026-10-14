@@ -39,6 +39,11 @@ jobs:
             coverage/backend.html
             web/coverage/lcov.info
             web/coverage/coverage-summary.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          if-no-files-found: error
+          path: backend/web-dist/
 
   binaries:
     needs: test
@@ -74,13 +79,18 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - uses: actions/setup-node@v4
+      - uses: actions/download-artifact@v4
         with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - run: npm ci --prefix web
-      - run: npm run build --prefix web
+          name: web-dist
+          path: backend/web-dist
+      - uses: msys2/setup-msys2@v2
+        if: matrix.os == 'windows' && matrix.arch == 'arm64'
+        id: msys2-arm64
+        with:
+          msystem: CLANGARM64
+          release: false
+          update: true
+          install: mingw-w64-clang-aarch64-clang
       - name: Build and package Unix binary
         if: matrix.os != 'windows'
         shell: bash
@@ -99,8 +109,12 @@ jobs:
         run: |
           if ((go env GOOS) -ne 'windows' -or (go env GOARCH) -ne '${{ matrix.arch }}') { throw 'Unexpected Go target' }
           if ('${{ matrix.arch }}' -eq 'arm64') {
-            $env:PATH = "C:\msys64\clangarm64\bin;$env:PATH"
-            $env:CC = 'clang'
+            $compilerDir = Join-Path '${{ steps.msys2-arm64.outputs.msys2-location }}' 'clangarm64\bin'
+            $env:CC = Join-Path $compilerDir 'clang.exe'
+            if (-not (Test-Path $env:CC)) { throw "ARM64 MinGW compiler missing: $env:CC" }
+            $env:PATH = "$compilerDir;$env:PATH"
+            $target = & $env:CC -dumpmachine
+            if ($target -notmatch '^aarch64-.*(gnu|mingw)') { throw "Unexpected ARM64 C target: $target" }
           } else {
             $env:PATH = "C:\msys64\ucrt64\bin;$env:PATH"
             $env:CC = 'gcc'

@@ -32,7 +32,7 @@ Follow-up work: add JSON-file source support for older OpenCode installations, i
 
 - Keep startup, source imports, repository queries and migrations, service business rules, API handlers, and shared models in focused Go files under `backend/`. The repository owns app SQLite access and read-only OpenCode queries; the service owns import coordination, filtering, and dashboard aggregation. Keep the Go module at the repository root so `go test ./...` covers the backend.
 - Run `make` to build the frontend, run Go formatting and vet, frontend ESLint, TypeScript and formatting checks, 75% minimum Go and frontend statement coverage gates, and Go tests before building the distributable executable. `make check` runs validation without the final binary build.
-- GitHub Actions runs these checks on pull requests and pushes, saves Go and frontend coverage reports, and builds native CGO binaries for Windows, macOS, and Linux on amd64 and arm64 runners. A `v*` tag publishes all six archives only after checks and builds pass.
+- GitHub Actions runs these checks on pull requests and pushes, saves Go and frontend coverage reports, builds the frontend once in the check job, and downloads that build in native CGO binary jobs for Windows, macOS, and Linux on amd64 and arm64 runners. A `v*` tag publishes all six archives only after checks and builds pass.
 
 ## Acceptance criteria
 
@@ -70,4 +70,4 @@ Follow-up work: add JSON-file source support for older OpenCode installations, i
 - A distribution build embeds the production UI in one Go executable. It serves the UI from any working directory without a separate frontend folder, and stores its default app database in the user's configuration directory. The headless `import` command remains available in the same executable.
 - `agentstat -version` prints the executable's version without starting the server or opening a database. The web UI shows the same version from `/api/status`; local builds default to `dev`, and tagged release binaries use their tag.
 - The maintainability checks pass, including 75% statement coverage floors for Go and frontend code.
-- CI publishes coverage artifacts for both backend and frontend. Tagged releases contain working binaries with the embedded UI for Windows, macOS, and Linux on amd64 and arm64.
+- CI publishes coverage artifacts for both backend and frontend, then shares one frontend build with all six binary jobs. Tagged releases contain working binaries with the embedded UI for Windows, macOS, and Linux on amd64 and arm64. The Windows ARM64 build uses an installed ARM64 MinGW C compiler for CGO, checks its target, and runs the packaged binary's version and import smoke checks.
