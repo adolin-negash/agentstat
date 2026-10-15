@@ -6,13 +6,16 @@ import (
 )
 
 type App struct {
-	db            *sql.DB
-	source        string
-	codexSource   string
-	copilotSource string
-	kiloSource    string
-	lastImport    time.Time
-	importErr     string
+	db               *sql.DB
+	databasePath     string
+	serverAddress    string
+	source           string
+	codexSource      string
+	copilotSource    string
+	kiloSource       string
+	lastImport       time.Time
+	importedSessions int
+	importErr        string
 }
 
 type Tokens struct {
@@ -45,6 +48,8 @@ type Session struct {
 	Model       string           `json:"model"`
 	Created     int64            `json:"created"`
 	Updated     int64            `json:"updated"`
+	ActionCount int64            `json:"actionCount"`
+	ToolCalls   int64            `json:"toolCalls"`
 	Tokens      Tokens           `json:"tokens"`
 	Models      []string         `json:"models"`
 	ModelTokens map[string]int64 `json:"-"`
@@ -66,9 +71,10 @@ type Usage struct {
 	Tokens Tokens `json:"tokens"`
 }
 type Filters struct {
-	From, To int64
-	Name     string
-	Projects map[string]bool
-	Models   map[string]bool
-	Sources  map[int64]bool
+	From, To             int64
+	Name                 string
+	Regex, CaseSensitive bool
+	Projects             map[string]bool
+	Models               map[string]bool
+	Sources              map[int64]bool
 }

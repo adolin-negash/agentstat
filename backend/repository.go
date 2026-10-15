@@ -35,13 +35,13 @@ func (r *Repository) Options() ([]map[string]string, []string, []map[string]any,
 	for rows.Next() {
 		var id, name string
 		if err := rows.Scan(&id, &name); err != nil {
-			rows.Close()
+			closeAndLogError(rows)
 			return nil, nil, nil, nil, err
 		}
 		projects = append(projects, map[string]string{"id": id, "name": name})
 	}
 	err = rows.Err()
-	rows.Close()
+	closeAndLogError(rows)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -52,13 +52,13 @@ func (r *Repository) Options() ([]map[string]string, []string, []map[string]any,
 	for rows.Next() {
 		var model string
 		if err := rows.Scan(&model); err != nil {
-			rows.Close()
+			closeAndLogError(rows)
 			return nil, nil, nil, nil, err
 		}
 		models = append(models, model)
 	}
 	err = rows.Err()
-	rows.Close()
+	closeAndLogError(rows)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -85,7 +85,7 @@ func (r *Repository) Options() ([]map[string]string, []string, []map[string]any,
 		if err == nil {
 			err = rows.Err()
 		}
-		rows.Close()
+		closeAndLogError(rows)
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
@@ -93,12 +93,12 @@ func (r *Repository) Options() ([]map[string]string, []string, []map[string]any,
 	return projects, models, folders, sources, nil
 }
 
-const sessionColumns = `s.id,s.title,s.project_id,s.folder_id,s.parent_id,m.name,s.created,s.updated,s.input,s.output,s.reasoning,s.cache_read,s.cache_write,s.source_id`
-const sessionJoins = ` FROM sessions s JOIN models m ON m.id=s.model_id`
+const sessionColumns = `s.id,s.title,s.project_id,s.folder_id,s.parent_id,m.name,s.created,s.updated,s.input,s.output,s.reasoning,s.cache_read,s.cache_write,s.source_id,COALESCE(a.action_count,0),COALESCE(a.tool_calls,0)`
+const sessionJoins = ` FROM sessions s JOIN models m ON m.id=s.model_id LEFT JOIN (SELECT session_id,COUNT(*) AS action_count,SUM(CASE WHEN kind='tool' THEN 1 ELSE 0 END) AS tool_calls FROM actions GROUP BY session_id) a ON a.session_id=s.id`
 
 func scanSession(row interface{ Scan(...any) error }) (Session, error) {
 	var s Session
-	err := row.Scan(&s.ID, &s.Title, &s.ProjectID, &s.FolderID, &s.ParentID, &s.Model, &s.Created, &s.Updated, &s.Tokens.Input, &s.Tokens.Output, &s.Tokens.Reasoning, &s.Tokens.CacheRead, &s.Tokens.CacheWrite, &s.SourceID)
+	err := row.Scan(&s.ID, &s.Title, &s.ProjectID, &s.FolderID, &s.ParentID, &s.Model, &s.Created, &s.Updated, &s.Tokens.Input, &s.Tokens.Output, &s.Tokens.Reasoning, &s.Tokens.CacheRead, &s.Tokens.CacheWrite, &s.SourceID, &s.ActionCount, &s.ToolCalls)
 	return s, err
 }
 
@@ -107,7 +107,7 @@ func (r *Repository) Sessions() ([]Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer closeAndLogError(rows)
 	sessions := []Session{}
 	for rows.Next() {
 		session, err := scanSession(rows)
@@ -128,7 +128,7 @@ func (r *Repository) Usage(id string) ([]Usage, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer closeAndLogError(rows)
 	usage := []Usage{}
 	for rows.Next() {
 		var row Usage
@@ -145,7 +145,7 @@ func (r *Repository) UsageBySession() (map[string][]Usage, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer closeAndLogError(rows)
 	usage := map[string][]Usage{}
 	for rows.Next() {
 		var sessionID string
@@ -163,7 +163,7 @@ func (r *Repository) Actions(id string) ([]Action, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer closeAndLogError(rows)
 	actions := []Action{}
 	for rows.Next() {
 		var action Action
@@ -223,7 +223,7 @@ func openSQLiteSource(path, source string) (*sql.DB, error) {
 		return nil, err
 	}
 	if err := db.Ping(); err != nil {
-		db.Close()
+		closeAndLogError(db)
 		return nil, err
 	}
 	return db, nil

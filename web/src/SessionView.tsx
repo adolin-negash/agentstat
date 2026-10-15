@@ -1,14 +1,48 @@
 import { useEffect, useState } from "preact/hooks";
 import { date, num, total } from "./format";
 import type { Action, Detail, Options, Session } from "./types";
+import { BackIcon } from "./BackIcon";
+
+function HighlightedText({ text, search }: { text: string; search: string }) {
+  if (!search) return <>{text}</>;
+  const lower = text.toLowerCase();
+  const chunks: { text: string; matched: boolean }[] = [];
+  let start = 0;
+  let index = lower.indexOf(search);
+  while (index !== -1) {
+    if (index > start)
+      chunks.push({ text: text.slice(start, index), matched: false });
+    chunks.push({
+      text: text.slice(index, index + search.length),
+      matched: true,
+    });
+    start = index + search.length;
+    index = lower.indexOf(search, start);
+  }
+  if (start < text.length)
+    chunks.push({ text: text.slice(start), matched: false });
+  return (
+    <>
+      {chunks.map((chunk) =>
+        chunk.matched ? (
+          <mark class="search-highlight">{chunk.text}</mark>
+        ) : (
+          chunk.text
+        ),
+      )}
+    </>
+  );
+}
 
 function SavedText({
   text,
   label,
+  search,
   copyable = true,
 }: {
   text: string;
   label: string;
+  search: string;
   copyable?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -16,6 +50,9 @@ function SavedText({
     "idle",
   );
   useEffect(() => setCopyStatus("idle"), [text]);
+  useEffect(() => {
+    setOpen(Boolean(search && text.toLowerCase().includes(search)));
+  }, [search, text]);
   const isLong = text.length > 500 || text.split("\n").length > 8;
   const copy = async () => {
     try {
@@ -27,7 +64,9 @@ function SavedText({
   };
   return (
     <div class="saved-text">
-      <pre class={isLong && !open ? "saved-text-collapsed" : ""}>{text}</pre>
+      <pre class={isLong && !open ? "saved-text-collapsed" : ""}>
+        <HighlightedText text={text} search={search} />
+      </pre>
       {(isLong || copyable) && (
         <div class="saved-text-controls">
           {isLong && (
@@ -89,24 +128,41 @@ function SavedText({
   );
 }
 
-function ActionContent({ action, source }: { action: Action; source: string }) {
+function ActionContent({
+  action,
+  source,
+  search,
+}: {
+  action: Action;
+  source: string;
+  search: string;
+}) {
   return (
     <div class="action-content">
-      {action.detail && <SavedText text={action.detail} label="action text" />}
+      {action.detail && (
+        <SavedText text={action.detail} label="action text" search={search} />
+      )}
       {["compaction", "abort", "limit", "error", "permission"].includes(
         action.kind,
       ) &&
-        action.status && <div class="tool-status">Status: {action.status}</div>}
+        action.status && (
+          <div class="tool-status">
+            Status: <HighlightedText text={action.status} search={search} />
+          </div>
+        )}
       {action.kind === "tool" && (
         <>
           {action.status && (
-            <div class="tool-status">Status: {action.status}</div>
+            <div class="tool-status">
+              Status: <HighlightedText text={action.status} search={search} />
+            </div>
           )}
           <div class="tool-section">
             <b>Input</b>
             <SavedText
               text={action.input || `No input saved by ${source}`}
               label="tool input"
+              search={search}
               copyable={Boolean(action.input)}
             />
           </div>
@@ -115,6 +171,7 @@ function ActionContent({ action, source }: { action: Action; source: string }) {
             <SavedText
               text={action.output || `No result saved by ${source}`}
               label="tool result"
+              search={search}
               copyable={Boolean(action.output)}
             />
           </div>
@@ -138,6 +195,8 @@ export function SessionView({
   onClose: () => void;
 }) {
   const [expanded, setExpanded] = useState<string[]>([]);
+  const [searchText, setSearchText] = useState("");
+  const search = searchText.trim().toLowerCase();
   useEffect(() => {
     const previousBodyOverflow = document.body.style.overflow;
     const previousPageOverflow = document.documentElement.style.overflow;
@@ -165,8 +224,38 @@ export function SessionView({
       );
     }
   }, [detail?.session.id]);
+  useEffect(() => setSearchText(""), [detail?.session.id]);
   const byParent = (id: string) =>
     detail?.actions.filter((action) => action.parentId === id) || [];
+  const matches = (action: Action) =>
+    !search ||
+    [
+      action.label,
+      action.kind,
+      action.detail,
+      action.input,
+      action.output,
+      action.status,
+      date(action.created),
+    ].some((value) => value?.toLowerCase().includes(search));
+  const visibleActions =
+    detail?.actions.filter(
+      (action) =>
+        !action.parentId &&
+        (matches(action) || byParent(action.id).some(matches)),
+    ) || [];
+  const matchCount = detail?.actions.filter(matches).length || 0;
+  useEffect(() => {
+    if (search && detail) {
+      setExpanded(
+        detail.actions
+          .filter(
+            (action) => !action.parentId && byParent(action.id).some(matches),
+          )
+          .map((action) => action.id),
+      );
+    }
+  }, [search, detail]);
   const session = detail?.session || preview;
   const project =
     options.projects.find((item) => item.id === session?.projectId)?.name ||
@@ -179,10 +268,11 @@ export function SessionView({
       <header class="session-caption">
         <button
           class="session-back"
+          type="button"
           onClick={onClose}
-          aria-label="Back to overview"
+          aria-label="Back to previous view"
         >
-          ← <span>Overview</span>
+          <BackIcon />
         </button>
         <div class="session-caption-text">
           <strong title={session?.title || ""}>
@@ -271,54 +361,108 @@ export function SessionView({
                     </div>
                   ))}
                 </div>
-                <h3>
-                  Action tree <small>{detail.actions.length} actions</small>
-                </h3>
-                {detail.actions
-                  .filter((action) => !action.parentId)
-                  .map((action) => {
-                    const children = byParent(action.id);
-                    const open = expanded.includes(action.id);
-                    return (
-                      <div key={action.id} class={`action ${action.kind}`}>
-                        <button
-                          class="action-parent"
-                          onClick={() =>
-                            setExpanded((value) =>
-                              open
-                                ? value.filter((id) => id !== action.id)
-                                : [...value, action.id],
-                            )
-                          }
-                        >
-                          <span class={"action-dot " + action.kind} />
-                          <span>
-                            <b>{action.label}</b>
-                            <small>
-                              {action.kind} · {date(action.created)}
-                            </small>
-                          </span>
-                          <span>
-                            {children.length
-                              ? `${children.length} actions ${open ? "⌄" : "›"}`
-                              : ""}
-                          </span>
-                        </button>
-                        <ActionContent action={action} source={source} />
-                        {open &&
-                          children.map((child) => (
-                            <details key={child.id} class="child">
-                              <summary>
-                                <span class={"action-dot " + child.kind} />
-                                <b>{child.label || child.kind}</b>
-                                <small>{child.kind}</small>
-                              </summary>
-                              <ActionContent action={child} source={source} />
-                            </details>
-                          ))}
-                      </div>
-                    );
-                  })}
+                <div class="action-heading">
+                  <h3>
+                    Action tree <small>{detail.actions.length} actions</small>
+                  </h3>
+                  <label class="action-search">
+                    <span class="sr-only">Search session actions</span>
+                    <input
+                      type="search"
+                      placeholder="Search actions, prompts, tools…"
+                      value={searchText}
+                      onInput={(event) =>
+                        setSearchText(event.currentTarget.value)
+                      }
+                    />
+                  </label>
+                </div>
+                {search && (
+                  <p class="action-search-count" role="status">
+                    {matchCount} of {detail.actions.length} actions match
+                  </p>
+                )}
+                {search && matchCount === 0 && (
+                  <p class="action-search-empty">No matching actions.</p>
+                )}
+                {visibleActions.map((action) => {
+                  const children = byParent(action.id).filter(matches);
+                  const open = expanded.includes(action.id);
+                  return (
+                    <div key={action.id} class={`action ${action.kind}`}>
+                      <button
+                        class="action-parent"
+                        onClick={() =>
+                          setExpanded((value) =>
+                            open
+                              ? value.filter((id) => id !== action.id)
+                              : [...value, action.id],
+                          )
+                        }
+                      >
+                        <span class={"action-dot " + action.kind} />
+                        <span>
+                          <b>
+                            <HighlightedText
+                              text={action.label}
+                              search={search}
+                            />
+                          </b>
+                          <small>
+                            <HighlightedText
+                              text={action.kind}
+                              search={search}
+                            />{" "}
+                            ·{" "}
+                            <HighlightedText
+                              text={date(action.created)}
+                              search={search}
+                            />
+                          </small>
+                        </span>
+                        <span>
+                          {children.length
+                            ? `${children.length} actions ${open ? "⌄" : "›"}`
+                            : ""}
+                        </span>
+                      </button>
+                      <ActionContent
+                        action={action}
+                        source={source}
+                        search={search}
+                      />
+                      {open &&
+                        children.map((child) => (
+                          <details
+                            key={child.id}
+                            class="child"
+                            open={Boolean(search)}
+                          >
+                            <summary>
+                              <span class={"action-dot " + child.kind} />
+                              <b>
+                                <HighlightedText
+                                  text={child.label || child.kind}
+                                  search={search}
+                                />
+                              </b>
+                              <small>
+                                <HighlightedText
+                                  text={child.kind}
+                                  search={search}
+                                />
+                              </small>
+                            </summary>
+                            <ActionContent
+                              action={child}
+                              source={source}
+                              search={search}
+                            />
+                          </details>
+                        ))}
+                    </div>
+                  );
+                })}
               </div>
             </>
           )}

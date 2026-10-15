@@ -26,7 +26,7 @@ func copilotWorkspace(path string) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer closeAndLogError(file)
 	values := map[string]string{}
 	scanner := bufio.NewScanner(file)
 	blockKey := ""
@@ -117,7 +117,7 @@ func (a *App) importCopilotFile(dir string, workspace map[string]string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer closeAndLogError(file)
 	id := workspace["id"]
 	if id == "" {
 		id = filepath.Base(dir)
@@ -258,7 +258,7 @@ func (a *App) importCopilotFile(dir string, workspace map[string]string) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer rollbackIfOpen(tx)
 	if err := a.repository().SaveSession(tx, Session{ID: sid, Source: "copilot", Title: title, ProjectID: "copilot:" + projectPath, Project: projectName, Directory: workspace["cwd"], Model: model, Created: created, Updated: updated, Tokens: total}); err != nil {
 		return err
 	}

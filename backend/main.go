@@ -67,9 +67,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close()
+	defer closeAndLogError(db)
 	db.SetMaxOpenConns(1)
-	app := &App{db: db, source: *source, codexSource: *codexSource, copilotSource: *copilotSource, kiloSource: *kiloSource}
+	app := &App{db: db, databasePath: *database, serverAddress: *addr, source: *source, codexSource: *codexSource, copilotSource: *copilotSource, kiloSource: *kiloSource}
 	if err := app.initSchema(); err != nil {
 		log.Fatal(err)
 	}
@@ -132,7 +132,7 @@ func runImport(args []string) error {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer closeAndLogError(db)
 	db.SetMaxOpenConns(1)
 	app.db = db
 	if err := app.initSchema(); err != nil {

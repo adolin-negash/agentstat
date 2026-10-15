@@ -7,34 +7,56 @@ you explore sessions, ordered actions, and token use. Source files are never cha
 
 ## Main features
 
+- **Main navigation:** Sessions opens the dashboard by default, with a Sessions page heading. Projects
+  lists every imported project by name, with its source after the name and first folder in the last column, first session time, session count, most
+  recent session start time, and total, input, uncached input, and output tokens. Click a column
+  heading to sort ascending, then click it again to sort descending; the default is name ascending.
+  Only one column is sorted at a time. Project rows scroll within the view while the page heading,
+  project count, and column headings stay visible. Open a project to see its source, creation and latest
+  session start, folders, session and action counts, token totals, and per-session mean tokens,
+  actions, and tool calls; then browse its sessions and inspect any session;
+  the back icon returns to the project list.
+  Settings has the theme selector in its first row and a data reload button in its second row.
+  Sessions uses a linked-squares icon, Projects uses a four-square icon, and Settings uses a symmetric gear icon. Each page heading repeats its sidebar icon before the
+  label. Navigation remains available on narrow screens. The sidebar bottom shows the total indexed
+  sessions, regardless of filters, with the app version below it. Click the version to see the
+  last successful import time, server host and port, app database path, and each configured source
+  path in a dialog.
 - **Four sources in one view:** import OpenCode and Kilo Code SQLite sessions, Codex JSONL rollouts,
   and GitHub
-  Copilot IDEA agent journals. Import runs at startup, from **Refresh data**, or through a headless
-  command.
+  Copilot IDEA agent journals. Import runs at startup, from **Refresh data** in Settings, or
+  through a headless command. After a manual refresh, a notification shows how many new sessions
+  were imported, or “Nothing to import,” and disappears after 10 seconds.
 - **Usage overview:** see session and token totals, uncached input, output, and cache reads and
   writes. A daily chart uses a distinct color for each model and includes session days with zero
-  recorded tokens.
+  recorded tokens. The overview chart starts expanded and can be collapsed or expanded by clicking
+  its title or chevron.
 - **Combined filters:** narrow the chart, cards, and session list by source, project, model, session
   name, and start date/time. Source, project, and model pickers allow multiple selections. Click or
-  drag across chart days to select a range; click a model in the legend to select it.
+  drag across chart days to select a range; click a model in the legend to select it. Session-name
+  search has regex (`.*`) and case-sensitive (`Aa`) buttons; both are off by default.
 - **Session inspection:** open a session for its source, project, start time, token breakdown, model
-  usage, and chronological actions. Expand and copy saved message text, tool input, and tool
+  usage, and chronological actions. Model names in the session list use the same colors as the
+  overview chart. The session list header shows its result count. Search within a
+  session by case-insensitive substring across action names, message text, tool input and results,
+  status, and other saved action details. Matching
+  child actions and long text expand automatically, and matches are highlighted. Expand and copy saved message text, tool input, and tool
   results. Messages, tools, reasoning summaries, compaction, permission requests, aborts, and errors
-  appear when recorded by the source.
-- **Local interface:** switch between the default violet and Claude Code inspired themes. The choice
+  appear when recorded by the source. The back icon returns to the previous view.
+- **Local interface:** switch between the default violet and Claude Code inspired themes in Settings. The choice
   is saved in the browser. Empty histories and import issues are shown in the UI. The production UI
   is embedded in the executable.
-- **Automated checks and releases:** GitHub Actions tests backend and frontend with coverage, builds
-  binaries for Windows, macOS, and Linux on Intel/AMD 64-bit and ARM64, and publishes them for `v*`
-  tags.
-- **App version:** the web footer and `agentstat -version` show the same executable version.
+- **Automated checks and releases:** GitHub Actions tests backend and frontend with coverage, runs
+  `golangci-lint` and `govulncheck`, builds binaries for Windows on Intel/AMD 64-bit and macOS and Linux on Intel/AMD 64-bit and ARM64, and
+  publishes them for `v*` tags. The Windows ARM64 CI target is currently commented out.
+- **App version:** the sidebar and `agentstat -version` show the same executable version.
 
 ## Requirements
 
-- To build: Go 1.22.5 or later, a C compiler, Node.js 20 or later, and npm. The SQLite driver uses
+- To build: Go 1.26.9 or later, a C compiler, Node.js 20 or later, and npm. The SQLite driver uses
   CGO, so build with CGO enabled on each target platform. Windows ARM64 builds need an ARM64 MinGW
   compiler (such as MSYS2 CLANGARM64); the MSVC-targeted LLVM compiler does not support Go's CGO
-  flags. CI installs the MSYS2 compiler explicitly.
+  flags. The Windows ARM64 CI target is currently commented out.
 - To run a built executable: no Go or Node.js installation is needed. The target system still needs
   the platform's standard C runtime for the SQLite driver.
 - At least one supported source history for a populated dashboard.
@@ -190,13 +212,13 @@ selected value. Model filtering counts only the selected models' tokens in the c
 
 | Filter           | Behavior                                                                                                                                                                                                                       |
 |------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Session name** | Case-insensitive substring search of the title; at most 200 characters.                                                                                                                                                        |
+| **Session name** | Case-insensitive substring search of the title by default; toggle `.*` for regular expressions and `Aa` for case-sensitive matching. Both can be used together. At most 200 characters. Invalid regex patterns show an error. |
 | **Sources**      | Include sessions from any selected source.                                                                                                                                                                                     |
 | **From / To**    | Filter on when a session **started**. Enter local `yyyy-mm-dd HH:MM` or use the date picker. From is inclusive; To is exclusive. Either end can be cleared.                                                                    |
 | **Projects**     | Include sessions from any selected project.                                                                                                                                                                                    |
 | **Models**       | Include sessions with recorded usage for any selected model. Multiple models' usage is summed without counting a token event twice. With no model selected, usage lacking model attribution appears as `Unknown` in the chart. |
 
-**Clear all** resets every filter. The chart's **Clear** button resets date and model selections
+**Clear all** resets every filter and both search toggles. The chart's **Clear** button resets date and model selections
 while leaving source, project, and name selections in place. Chart days use the server's local
 timezone; the browser converts date inputs in its local timezone. Use matching timezones if day
 boundaries matter.
@@ -207,13 +229,23 @@ The UI uses these endpoints on the address set by `-addr`.
 
 | Endpoint                 | Description                                                                                                                                       |
 |--------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------|
-| `GET /api/status`        | App version, configured source paths, last successful import time, latest import issue, and total indexed sessions.                               |
-| `POST /api/import`       | Scan configured sources again, then return status. Returns an error if no source imports successfully.                                            |
+| `GET /api/status`        | App version, server address, app database path, configured source paths, last successful import time, new sessions in the latest import (`importedSessions`), latest import issue, and total indexed sessions.                               |
+| `POST /api/import`       | Scan configured sources again, then return status including the new session count for this import. Returns an error if no source imports successfully.                                            |
 | `GET /api/options`       | Available projects (`id`, `name`), model names, folders (`id`, `path`), and sources (`id`, `name`). Use these IDs for filters and session labels. |
-| `GET /api/dashboard`     | Filtered sessions, summary totals, and daily chart bars.                                                                                          |
+| `GET /api/dashboard`     | Filtered sessions (including saved action and tool-call counts), summary totals, and daily chart bars.                                             |
 | `GET /api/sessions/{id}` | One session, its ordered actions, and model usage. A missing ID returns 404.                                                                      |
 
 `/api/dashboard` accepts these query parameters. Omitted parameters do not restrict results.
+The Projects view requests it without filters, so project counts and dates include all imported
+sessions regardless of the active Sessions view filters. A project's created time is its earliest
+session start; its recent session time is its latest session start. Project token counts sum all
+sessions in the project: total includes cache and reasoning, input includes uncached and cached
+input, uncached input excludes both cache categories, and output excludes reasoning. Project
+folders are the distinct paths used by its sessions. The Projects table shows the first folder
+alphabetically when a project has several. Project sources are the distinct sources
+used by its sessions, shown by their display names. Total actions counts saved action records;
+tool calls count saved actions with kind `tool`. Per-session means divide each project total by
+its session count and display at most one decimal place.
 
 | Parameter | Format and effect                                                                                                                                         |
 |-----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -222,7 +254,9 @@ The UI uses these endpoints on the address set by `-addr`.
 | `project` | Project **ID** from `/api/options`, not its display name. Repeat for multiple projects.                                                                   |
 | `source`  | Positive numeric source **ID** from `/api/options`, not `opencode`/`codex`/`copilot`/`kilo`. Repeat for multiple sources. Invalid values return HTTP 400. |
 | `model`   | Exact model name from `/api/options`. Repeat for multiple models.                                                                                         |
-| `name`    | Case-insensitive title substring, trimmed at both ends; at most 200 Unicode characters. An invalid value returns HTTP 400.                                |
+| `name`    | Title search text, trimmed at both ends; at most 200 Unicode characters. Defaults to case-insensitive substring matching. An invalid value returns HTTP 400. |
+| `regex` | Set to `1` to treat `name` as a Go RE2 regular expression. Invalid patterns return HTTP 400. Omit when off. |
+| `case_sensitive` | Set to `1` for case-sensitive title matching, with or without `regex`. Omit when off. |
 
 Example (replace the IDs and timestamps with values from your data):
 
@@ -282,23 +316,38 @@ Cache reads and writes show recorded token quantities only.
 make
 ```
 
-The default Make target builds the frontend, runs Go formatting and vet, frontend ESLint, TypeScript
-and Prettier checks, 75% Go and frontend statement coverage gates and Go tests, then builds
+The default Make target builds the frontend, runs Go formatting, golangci-lint, frontend ESLint,
+TypeScript and Prettier checks, 75% Go and frontend statement coverage gates, frontend function and branch coverage gates above 75%, and Go tests, then builds
 `dist/agentstat`. The binary
 is built only after the checks pass. Use `make check` to run the checks without building the binary,
 or `make build` to build it without running the checks. Build the frontend before running Go
 commands
 directly in a fresh checkout because the Go package embeds it.
 
+`make go-lint` runs Staticcheck, vet, unchecked-error, unused-code, and ineffective-assignment checks.
+If golangci-lint v2.14.0 is not installed, the target downloads the pinned release binary into
+the ignored `.tools/` directory and verifies its checksum. The first run needs network access.
+CI installs the same pinned release.
+
+To check Go packages for known vulnerabilities locally, run:
+
+```sh
+make vulncheck
+```
+
+The target downloads a pinned `govulncheck` release on first use and queries
+the Go vulnerability database, so it needs network access. It is separate from the default Make
+target; GitHub Actions runs it on pull requests, pushes, and release tags.
+
 GitHub Actions runs the same checks for pull requests and pushes to `main`, and stores a Go coverage
 profile/HTML report and frontend LCOV/JSON summary as a workflow artifact. The check job builds the
-frontend once and uploads `backend/web-dist/` as an artifact; all six native CGO binary jobs download
+frontend once and uploads `backend/web-dist/` as an artifact; all five native CGO binary jobs download
 that same build for embedding. Each workflow run keeps the archives as artifacts. Push a version
 tag
 such as `v1.0.0` to create a GitHub Release with `agentstat-{linux,darwin}-{amd64,arm64}.tar.gz`
-and `agentstat-windows-{amd64,arm64}.zip`. Release archives contain the executable with the UI
+and `agentstat-windows-amd64.zip`. Release archives contain the executable with the UI
 embedded
-and report their tag through `-version` and the web footer. Local `make` builds report `dev` by
+and report their tag through `-version` and the sidebar. Local `make` builds report `dev` by
 default;
 use `make VERSION=v1.0.0` to set another version.
 Windows ARM64 needs an ARM64 Windows system; macOS and Linux archives are likewise architecture

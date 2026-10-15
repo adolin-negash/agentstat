@@ -146,10 +146,10 @@ func codexPermissionRequest(p codexPayload) (string, bool) {
 func (a *App) importCodex() error {
 	info, err := os.Stat(a.codexSource)
 	if err != nil {
-		return fmt.Errorf("Codex sessions unavailable at %s: %w", a.codexSource, err)
+		return fmt.Errorf("codex sessions unavailable at %s: %w", a.codexSource, err)
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("Codex sessions path is not a directory: %s", a.codexSource)
+		return fmt.Errorf("codex sessions path is not a directory: %s", a.codexSource)
 	}
 	count := 0
 	err = filepath.WalkDir(a.codexSource, func(path string, entry os.DirEntry, walkErr error) error {
@@ -177,7 +177,7 @@ func (a *App) importCodexFile(path string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer closeAndLogError(file)
 	reader := bufio.NewReader(file)
 	var records []codexRecord
 	var meta codexPayload
@@ -351,7 +351,7 @@ func (a *App) importCodexFile(path string) error {
 			continue
 		}
 		if action.Label == "" {
-			action.Label = strings.Title(action.Kind)
+			action.Label = actionKindLabel(action.Kind)
 		}
 		actions = append(actions, action)
 		regularActions++
@@ -383,7 +383,7 @@ func (a *App) importCodexFile(path string) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer rollbackIfOpen(tx)
 	err = a.repository().SaveSession(tx, Session{ID: sid, Title: title, ProjectID: "codex:" + meta.Cwd, Project: project, Directory: meta.Cwd, Model: model, Created: created, Updated: updated, Tokens: total, Source: "codex"})
 	if err != nil {
 		return err

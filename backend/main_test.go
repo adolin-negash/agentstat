@@ -16,7 +16,7 @@ func TestDashboardMultipleProjects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeAndLogError(db)
 	db.SetMaxOpenConns(1)
 	a := &App{db: db}
 	if err := a.initSchema(); err != nil {
@@ -33,8 +33,24 @@ func TestDashboardMultipleProjects(t *testing.T) {
 		if err := a.repository().SaveSession(tx, Session{ID: project.id, Title: project.title, ProjectID: project.id, Project: project.title, Directory: "", Model: "", Created: 1000, Updated: 1000, Tokens: Tokens{Input: int64(project.input)}, Source: "opencode"}); err != nil {
 			t.Fatal(err)
 		}
+		if project.id == "p1" {
+			for _, action := range []Action{{ID: "p1-user", Kind: "user"}, {ID: "p1-tool", Kind: "tool"}} {
+				if err := a.repository().SaveAction(tx, project.id, action); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
 		if err := tx.Commit(); err != nil {
 			t.Fatal(err)
+		}
+	}
+	projectSessions, err := a.repository().Sessions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, session := range projectSessions {
+		if session.ID == "p1" && (session.ActionCount != 2 || session.ToolCalls != 1) {
+			t.Fatalf("action counts for p1: %+v", session)
 		}
 	}
 	for _, check := range []struct {
@@ -49,6 +65,12 @@ func TestDashboardMultipleProjects(t *testing.T) {
 		{"?name=ON", 1, 10},
 		{"?name=o", 2, 30},
 		{"?name=o&project=p2", 1, 20},
+		{"?name=ON&case_sensitive=1", 0, 0},
+		{"?name=One&case_sensitive=1", 1, 10},
+		{"?name=%5EO.e%24&regex=1", 1, 10},
+		{"?name=%5Eo.e%24&regex=1", 1, 10},
+		{"?name=%5Eo.e%24&regex=1&case_sensitive=1", 0, 0},
+		{"?name=O.e", 0, 0},
 	} {
 		recorder := httptest.NewRecorder()
 		a.dashboard(recorder, httptest.NewRequest("GET", "/api/dashboard"+check.query, nil))
@@ -69,8 +91,15 @@ func TestDashboardMultipleProjects(t *testing.T) {
 		if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil {
 			t.Fatal(err)
 		}
-		if len(result.Sessions) != check.count || result.Summary.Sessions != check.count || result.Summary.Tokens.Total() != check.tokens || len(result.Bars) != 1 || result.Bars[0].Sessions != check.count || result.Bars[0].Tokens != check.tokens {
+		expectedBars := 0
+		if check.count > 0 {
+			expectedBars = 1
+		}
+		if len(result.Sessions) != check.count || result.Summary.Sessions != check.count || result.Summary.Tokens.Total() != check.tokens || len(result.Bars) != expectedBars {
 			t.Fatalf("query=%q result=%+v", check.query, result)
+		}
+		if check.count > 0 && (result.Bars[0].Sessions != check.count || result.Bars[0].Tokens != check.tokens) {
+			t.Fatalf("query=%q bars=%+v", check.query, result.Bars)
 		}
 		if check.query == "" {
 			var payload struct {
@@ -107,6 +136,9 @@ func TestParseFiltersRejectsInvalidValues(t *testing.T) {
 		{"negative source", "?source=-1", "invalid source"},
 		{"invalid end", "?to=tomorrow", "invalid to"},
 		{"reversed range", "?from=2000&to=1000", "from must precede to"},
+		{"invalid regex flag", "?regex=true", "invalid regex"},
+		{"invalid case flag", "?case_sensitive=0", "invalid case_sensitive"},
+		{"invalid expression", "?name=%5B&regex=1", "invalid regular expression"},
 	} {
 		t.Run(check.name, func(t *testing.T) {
 			_, err := parseFilters(httptest.NewRequest("GET", "/api/dashboard"+check.query, nil))
@@ -156,12 +188,12 @@ func TestImportAndModelFilter(t *testing.T) {
 	if _, err = src.Exec(`INSERT INTO session_message VALUES('m5','s','compaction',5,1400,'{"status":"failed","summary":""}')`); err != nil {
 		t.Fatal(err)
 	}
-	src.Close()
+	closeAndLogError(src)
 	db, err := sql.Open("sqlite3", filepath.Join(dir, "app.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeAndLogError(db)
 	db.SetMaxOpenConns(1)
 	a := &App{db: db, source: source}
 	if err = a.initSchema(); err != nil {
@@ -169,6 +201,9 @@ func TestImportAndModelFilter(t *testing.T) {
 	}
 	if err = a.importData(); err != nil {
 		t.Fatal(err)
+	}
+	if a.importedSessions != 1 {
+		t.Fatalf("first import added %d sessions, want 1", a.importedSessions)
 	}
 	all, err := a.filtered(Filters{Models: map[string]bool{}})
 	if err != nil {
@@ -224,6 +259,9 @@ func TestImportAndModelFilter(t *testing.T) {
 	if err = a.importData(); err != nil {
 		t.Fatal(err)
 	}
+	if a.importedSessions != 0 {
+		t.Fatalf("repeat import added %d sessions, want 0", a.importedSessions)
+	}
 	if err = db.QueryRow(`SELECT count(*) FROM actions WHERE session_id='s'`).Scan(&count); err != nil || count != 7 {
 		t.Fatalf("repeat actions count=%d err=%v", count, err)
 	}
@@ -238,6 +276,8 @@ func TestImportAndModelFilter(t *testing.T) {
 	if err = db.QueryRow(`SELECT label,status FROM actions WHERE id='m5'`).Scan(&label, &status); err != nil || label != "Compaction failed" || status != "failed" {
 		t.Fatalf("failed compaction action: label=%q status=%q err=%v", label, status, err)
 	}
+	a.databasePath = filepath.Join(dir, "agentstat.db")
+	a.serverAddress = "127.0.0.1:8080"
 	for _, check := range []struct {
 		name    string
 		handler http.HandlerFunc
@@ -253,7 +293,7 @@ func TestImportAndModelFilter(t *testing.T) {
 		{"detail", a.detail, "GET", "/api/sessions/s", 200, "full read result"},
 		{"missing detail", a.detail, "GET", "/api/sessions/missing", 404, "404"},
 		{"refresh method", a.refresh, "GET", "/api/import", 405, "POST required"},
-		{"refresh", a.refresh, "POST", "/api/import", 200, "\"sessions\":1"},
+		{"refresh", a.refresh, "POST", "/api/import", 200, "\"importedSessions\":0"},
 	} {
 		t.Run(check.name, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
@@ -263,6 +303,13 @@ func TestImportAndModelFilter(t *testing.T) {
 			}
 			if check.name == "status" && !strings.Contains(recorder.Body.String(), `"version":"`+version+`"`) {
 				t.Fatalf("status omits app version: %q", recorder.Body.String())
+			}
+			if check.name == "status" {
+				for _, value := range []string{a.databasePath, a.serverAddress, a.source} {
+					if !strings.Contains(recorder.Body.String(), value) {
+						t.Fatalf("status omits %q: %q", value, recorder.Body.String())
+					}
+				}
 			}
 		})
 	}
@@ -276,7 +323,7 @@ func TestImportAndModelFilter(t *testing.T) {
 	if _, err = src.Exec(`DELETE FROM session_message WHERE id='m5'`); err != nil {
 		t.Fatal(err)
 	}
-	src.Close()
+	closeAndLogError(src)
 	if err = a.importData(); err != nil {
 		t.Fatal(err)
 	}
@@ -309,7 +356,7 @@ func TestImportCommandSelectionAndCounts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeAndLogError(db)
 	var sessionCount int
 	if err := db.QueryRow(`SELECT count(*) FROM sessions WHERE id='codex:one'`).Scan(&sessionCount); err != nil || sessionCount != 1 {
 		t.Fatalf("removed source session was lost: count=%d err=%v", sessionCount, err)
@@ -354,12 +401,12 @@ INSERT INTO part VALUES('part','m',1001,'{"type":"tool","name":"bash","state":{"
 	if _, err = src.Exec(`INSERT INTO part VALUES('long-part','m',1002,?)`, string(part)); err != nil {
 		t.Fatal(err)
 	}
-	src.Close()
+	closeAndLogError(src)
 	db, err := sql.Open("sqlite3", filepath.Join(dir, "app.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeAndLogError(db)
 	db.SetMaxOpenConns(1)
 	app := &App{db: db, source: source}
 	if err := app.initSchema(); err != nil {
@@ -392,7 +439,7 @@ func TestLegacyAppDatabaseRequiresConversion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeAndLogError(db)
 	if _, err := db.Exec(`CREATE TABLE sessions(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,directory TEXT NOT NULL,model TEXT NOT NULL,source TEXT NOT NULL); INSERT INTO sessions VALUES('s','p','/work','old-model','codex')`); err != nil {
 		t.Fatal(err)
 	}
@@ -411,7 +458,7 @@ func TestProjectNameFollowsLatestSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeAndLogError(db)
 	a := &App{db: db}
 	if err := a.initSchema(); err != nil {
 		t.Fatal(err)

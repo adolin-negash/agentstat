@@ -34,6 +34,8 @@ const dashboard: Dashboard = {
       models: ["model-a"],
       created: new Date(2026, 0, 2, 3, 4).getTime(),
       updated: new Date(2026, 0, 2, 3, 4).getTime(),
+      actionCount: 0,
+      toolCalls: 0,
       tokens,
     },
   ],
@@ -67,6 +69,7 @@ describe("dashboard states", () => {
           />
           <SessionList
             dashboard={emptyDashboard}
+            theme="default"
             options={options}
             onSelect={vi.fn()}
           />
@@ -84,6 +87,7 @@ describe("dashboard states", () => {
       render(
         <SessionList
           dashboard={dashboard}
+          theme="default"
           options={options}
           onSelect={onSelect}
         />,
@@ -95,6 +99,50 @@ describe("dashboard states", () => {
     expect(host.textContent).toContain(options.projects[0].name);
     act(() => host.querySelector<HTMLButtonElement>(".session-row")?.click());
     expect(onSelect).toHaveBeenCalledWith("session");
+  });
+
+  it("colors each session model like the overview in both themes", () => {
+    const multiModelDashboard: Dashboard = {
+      ...dashboard,
+      sessions: [{ ...dashboard.sessions[0], models: ["model-a", "model-b"] }],
+      bars: [
+        {
+          ...dashboard.bars[0],
+          models: { "model-a": 5, "model-b": 5 },
+        },
+      ],
+    };
+    for (const theme of ["default", "claude"] as const) {
+      act(() =>
+        render(
+          <>
+            <Overview
+              dashboard={multiModelDashboard}
+              theme={theme}
+              from=""
+              to=""
+              selectedModels={[]}
+              onRange={vi.fn()}
+              onModels={vi.fn()}
+            />
+            <SessionList
+              dashboard={multiModelDashboard}
+              theme={theme}
+              options={options}
+              onSelect={vi.fn()}
+            />
+          </>,
+          host,
+        ),
+      );
+      const legendColors = [
+        ...host.querySelectorAll<HTMLElement>(".chart-legend i"),
+      ].map((element) => element.style.backgroundColor);
+      const sessionColors = [
+        ...host.querySelectorAll<HTMLElement>(".session-model span[style]"),
+      ].map((element) => element.style.color);
+      expect(sessionColors).toEqual(legendColors);
+    }
   });
 
   it("filters the chart by day and model, then clears both selections", () => {
@@ -148,6 +196,41 @@ describe("dashboard states", () => {
     expect(onModels).toHaveBeenLastCalledWith([]);
   });
 
+  it("starts with the overview expanded and folds and unfolds the chart", () => {
+    act(() =>
+      render(
+        <Overview
+          dashboard={dashboard}
+          theme="default"
+          from=""
+          to=""
+          selectedModels={[]}
+          onRange={vi.fn()}
+          onModels={vi.fn()}
+        />,
+        host,
+      ),
+    );
+    const toggle = host.querySelector<HTMLButtonElement>(".overview-toggle")!;
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(toggle.getAttribute("aria-label")).toBe("Collapse overview");
+    expect(host.querySelectorAll(".bar-slot")).toHaveLength(2);
+    act(() => toggle.click());
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(toggle.getAttribute("aria-label")).toBe("Expand overview");
+    expect(host.querySelector("#overview-chart")?.hasAttribute("hidden")).toBe(
+      true,
+    );
+    const title = host.querySelector<HTMLButtonElement>(".overview-title")!;
+    act(() => title.click());
+    expect(title.getAttribute("aria-expanded")).toBe("true");
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(host.querySelector("#overview-chart")?.hasAttribute("hidden")).toBe(
+      false,
+    );
+    expect(host.querySelectorAll(".bar-slot")).toHaveLength(2);
+  });
+
   it("shows the same token total in the session summary", () => {
     act(() => render(<SessionSummary dashboard={dashboard} />, host));
     expect(host.querySelector(".metrics")?.textContent).toContain(
@@ -162,6 +245,8 @@ describe("filters", () => {
     onModels: vi.fn(),
     onSources: vi.fn(),
     onName: vi.fn(),
+    onRegex: vi.fn(),
+    onCaseSensitive: vi.fn(),
     onFrom: vi.fn(),
     onTo: vi.fn(),
   });
@@ -176,6 +261,8 @@ describe("filters", () => {
           models={[]}
           sources={[]}
           name="old"
+          regex={false}
+          caseSensitive={false}
           from=""
           to=""
           {...on}
@@ -201,7 +288,131 @@ describe("filters", () => {
     );
     expect(on.onProjects).toHaveBeenCalledWith([]);
     expect(on.onName).toHaveBeenCalledWith("");
+    expect(on.onRegex).toHaveBeenCalledWith(false);
+    expect(on.onCaseSensitive).toHaveBeenCalledWith(false);
     expect(on.onFrom).toHaveBeenLastCalledWith("");
+  });
+
+  it("searches and selects choices, then closes pickers from outside and Escape", () => {
+    const on = handlers();
+    const manyOptions: Options = {
+      ...options,
+      projects: Array.from({ length: 6 }, (_, index) => ({
+        id: `project-${index}`,
+        name: `Project ${index}`,
+      })),
+    };
+    const show = (projects: string[]) =>
+      act(() =>
+        render(
+          <Filters
+            options={manyOptions}
+            projects={projects}
+            models={[]}
+            sources={[]}
+            name=""
+            regex={false}
+            caseSensitive={false}
+            from=""
+            to=""
+            {...on}
+          />,
+          host,
+        ),
+      );
+    show([]);
+    const picker = host.querySelector<HTMLDetailsElement>(
+      ".multi-select-filter:has(.filter-search) details",
+    )!;
+    act(() => {
+      picker.open = true;
+      picker.dispatchEvent(new Event("toggle"));
+    });
+    const search = picker.querySelector<HTMLInputElement>(".filter-search")!;
+    act(() => {
+      search.value = "Project 4";
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(picker.querySelectorAll('input[type="checkbox"]')).toHaveLength(1);
+    act(() =>
+      picker.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click(),
+    );
+    expect(on.onProjects).toHaveBeenLastCalledWith(["project-4"]);
+    show(["project-4"]);
+    expect(picker.querySelector("summary")?.textContent).toBe("Project 4");
+    act(() =>
+      picker.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click(),
+    );
+    expect(on.onProjects).toHaveBeenLastCalledWith([]);
+    act(() =>
+      picker
+        .querySelector<HTMLButtonElement>(".filter-options button")!
+        .click(),
+    );
+    expect(on.onProjects).toHaveBeenLastCalledWith([]);
+    act(() => {
+      document.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    });
+    expect(picker.open).toBe(false);
+    act(() => {
+      picker.open = true;
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+    });
+    expect(picker.open).toBe(false);
+    expect(document.activeElement).toBe(picker.querySelector("summary"));
+  });
+
+  it("updates search controls and date pickers", () => {
+    const on = handlers();
+    act(() =>
+      render(
+        <Filters
+          options={options}
+          projects={[]}
+          models={[]}
+          sources={[]}
+          name=""
+          regex={false}
+          caseSensitive={false}
+          from="2026-01-02T03:04"
+          to=""
+          {...on}
+        />,
+        host,
+      ),
+    );
+    const name = host.querySelector<HTMLInputElement>("#session-name-search")!;
+    act(() => {
+      name.value = "review";
+      name.dispatchEvent(new Event("input", { bubbles: true }));
+      host
+        .querySelector<HTMLButtonElement>('[aria-label="Regular expression"]')!
+        .click();
+      host
+        .querySelector<HTMLButtonElement>('[aria-label="Case sensitive"]')!
+        .click();
+    });
+    expect(on.onName).toHaveBeenCalledWith("review");
+    expect(on.onRegex).toHaveBeenCalledWith(true);
+    expect(on.onCaseSensitive).toHaveBeenCalledWith(true);
+    const picker = host.querySelector<HTMLInputElement>(
+      '[aria-label="Choose to date and time"]',
+    )!;
+    act(() => {
+      picker.value = "2026-01-03T00:00";
+      picker.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(on.onTo).toHaveBeenCalledWith("2026-01-03T00:00");
+    act(() =>
+      host
+        .querySelector<HTMLButtonElement>(
+          '[aria-label="Clear from date and time"]',
+        )!
+        .click(),
+    );
+    expect(on.onFrom).toHaveBeenCalledWith("");
   });
 });
 
@@ -293,5 +504,83 @@ describe("session details", () => {
       host.querySelector('[aria-label="Copied action text"]'),
     ).not.toBeNull();
     expect(host.textContent).toContain("command result");
+  });
+
+  it("searches labels, saved text, and nested tool details", () => {
+    const detail = {
+      session: dashboard.sessions[0],
+      usage: [],
+      actions: [
+        {
+          id: "prompt",
+          kind: "user",
+          label: "Question",
+          detail: `${"Earlier prompt text ".repeat(35)}Find the orchid`,
+          created: dashboard.sessions[0].created,
+          order: 1,
+        },
+        {
+          id: "tool-parent",
+          kind: "assistant",
+          label: "Assistant step",
+          created: dashboard.sessions[0].created,
+          order: 2,
+        },
+        {
+          id: "tool-child",
+          parentId: "tool-parent",
+          kind: "tool",
+          label: "Inspect file",
+          input: "needle in input",
+          output: "needle in result",
+          created: dashboard.sessions[0].created,
+          order: 3,
+        },
+      ],
+    };
+    act(() =>
+      render(
+        <SessionView
+          detail={detail}
+          options={options}
+          error=""
+          onClose={vi.fn()}
+        />,
+        host,
+      ),
+    );
+    const input = host.querySelector<HTMLInputElement>(".action-search input")!;
+    const search = (value: string) =>
+      act(() => {
+        input.value = value;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+
+    search("ORCHID");
+    expect(host.querySelectorAll(".action")).toHaveLength(1);
+    expect(host.textContent).toContain("Question");
+    expect(host.textContent).toContain("1 of 3 actions match");
+    expect(host.querySelector(".saved-text-collapsed")).toBeNull();
+    expect(host.querySelector(".saved-text mark")?.textContent).toBe("orchid");
+
+    search("needle in result");
+    expect(host.querySelectorAll(".action")).toHaveLength(1);
+    expect(host.querySelector(".child[open]")).not.toBeNull();
+    expect(host.textContent).toContain("Assistant step");
+    expect(host.textContent).toContain("needle in result");
+    expect(host.querySelector(".child .saved-text mark")?.textContent).toBe(
+      "needle in result",
+    );
+
+    search("inspect file");
+    expect(host.querySelector(".child[open]")).not.toBeNull();
+    expect(host.querySelector(".child summary mark")?.textContent).toBe(
+      "Inspect file",
+    );
+    search("absent");
+    expect(host.querySelectorAll(".action")).toHaveLength(0);
+    expect(host.textContent).toContain("No matching actions");
+    search("");
+    expect(host.querySelectorAll(".action")).toHaveLength(2);
   });
 });

@@ -14,6 +14,8 @@ export type Session = {
   model: string;
   created: number;
   updated: number;
+  actionCount: number;
+  toolCalls: number;
   tokens: Tokens;
   models: string[];
 };
@@ -49,11 +51,14 @@ export type Options = {
 };
 export type Status = {
   version: string;
+  serverAddress: string;
+  databasePath: string;
   source: string;
   codexSource: string;
   copilotSource: string;
   kiloSource: string;
   lastImport: string;
+  importedSessions: number;
   importError: string;
   sessions: number;
 };

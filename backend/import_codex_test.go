@@ -37,7 +37,7 @@ func TestCodexImportAndSourceFilter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeAndLogError(db)
 	db.SetMaxOpenConns(1)
 	app := &App{db: db, codexSource: source}
 	if err := app.initSchema(); err != nil {
@@ -100,7 +100,7 @@ func TestCodexThreadSettingsModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeAndLogError(db)
 	app := &App{db: db, codexSource: source}
 	if err := app.initSchema(); err != nil {
 		t.Fatal(err)
@@ -133,7 +133,7 @@ func TestCodexPermissionRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeAndLogError(db)
 	app := &App{db: db, codexSource: source}
 	if err := app.initSchema(); err != nil {
 		t.Fatal(err)

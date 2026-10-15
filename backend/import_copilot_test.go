@@ -53,7 +53,7 @@ updated_at: 2026-01-01T10:00:10Z
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeAndLogError(db)
 	db.SetMaxOpenConns(1)
 	app := &App{db: db, copilotSource: source}
 	if err := app.initSchema(); err != nil {

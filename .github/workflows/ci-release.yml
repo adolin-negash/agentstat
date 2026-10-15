@@ -25,11 +25,18 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci --prefix web
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.14.0
+          install-only: true
       - name: Lint, test, and measure coverage
         run: |
           mkdir -p coverage
           GO_COVERAGE_PROFILE=coverage/backend.out make check
           go tool cover -html=coverage/backend.out -o coverage/backend.html
+      - name: Check Go vulnerabilities
+        run: make vulncheck
       - uses: actions/upload-artifact@v4
         with:
           name: coverage
@@ -66,9 +73,9 @@ jobs:
           - runner: windows-2022
             os: windows
             arch: amd64
-          - runner: windows-11-arm
-            os: windows
-            arch: arm64
+          # - runner: windows-11-arm
+          #   os: windows
+          #   arch: arm64
     runs-on: ${{ matrix.runner }}
     env:
       CGO_ENABLED: "1"

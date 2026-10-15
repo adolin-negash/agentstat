@@ -15,12 +15,12 @@ func (a *App) importOpenCode() error {
 	if err != nil {
 		return err
 	}
-	defer src.Close()
+	defer closeAndLogError(src)
 	tx, err := a.repository().Begin()
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer rollbackIfOpen(tx)
 	imported, supported := 0, false
 	for _, schema := range []sourceSchema{{"session", "message", "part"}, {"session_v2", "session_message", ""}} {
 		if !(&SourceRepository{db: src}).TableExists(schema.session) {
@@ -36,7 +36,7 @@ func (a *App) importOpenCode() error {
 			var modelJSON string
 			err = rows.Scan(&s.ID, &s.Title, &s.ProjectID, &s.Project, &s.Directory, &s.ParentID, &modelJSON, &s.Created, &s.Updated, &s.Tokens.Input, &s.Tokens.Output, &s.Tokens.Reasoning, &s.Tokens.CacheRead, &s.Tokens.CacheWrite)
 			if err != nil {
-				rows.Close()
+				closeAndLogError(rows)
 				return err
 			}
 			s.Model = modelName(modelJSON)
@@ -49,13 +49,13 @@ func (a *App) importOpenCode() error {
 				err = a.importActions(src, tx, s, schema)
 			}
 			if err != nil {
-				rows.Close()
+				closeAndLogError(rows)
 				return err
 			}
 			imported++
 		}
 		err = rows.Err()
-		rows.Close()
+		closeAndLogError(rows)
 		if err != nil {
 			return err
 		}
@@ -95,6 +95,12 @@ func tokenFromMap(m map[string]any) Tokens {
 }
 func asMap(v any) map[string]any { m, _ := v.(map[string]any); return m }
 func str(v any) string           { value, _ := v.(string); return value }
+func actionKindLabel(kind string) string {
+	if kind == "" {
+		return ""
+	}
+	return strings.ToUpper(kind[:1]) + kind[1:]
+}
 func clip(value string, limit int) string {
 	runes := []rune(strings.TrimSpace(value))
 	if len(runes) > limit {
@@ -136,7 +142,7 @@ func partText(part map[string]any) (string, string) {
 		value := str(part["text"])
 		return clip(value, 120), value
 	default:
-		return strings.Title(kind), ""
+		return actionKindLabel(kind), ""
 	}
 }
 

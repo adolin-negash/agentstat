@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"strings"
 )
 
 func (a *App) importActions(src *sql.DB, tx *sql.Tx, session Session, schema sourceSchema) error {
@@ -14,7 +13,7 @@ func (a *App) importActions(src *sql.DB, tx *sql.Tx, session Session, schema sou
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer closeAndLogError(rows)
 	add := func(id, parent, kind, label, detail, input, output, status string, created int64) error {
 		order++
 		return a.repository().SaveAction(tx, session.ID, Action{ID: id, ParentID: parent, Kind: kind, Label: clip(label, 180), Detail: detail, Input: input, Output: output, Status: status, Created: created, Ord: order})
@@ -43,7 +42,7 @@ func (a *App) importActions(src *sql.DB, tx *sql.Tx, session Session, schema sou
 				usage[model] = tokens
 			}
 		}
-		label, detail := strings.Title(kind), ""
+		label, detail := actionKindLabel(kind), ""
 		status := ""
 		if kind == "user" || kind == "synthetic" || kind == "system" {
 			detail = str(message["text"])
@@ -123,7 +122,7 @@ func importLegacyParts(src *sql.DB, messageID string, add func(string, string, s
 	if err != nil {
 		return err
 	}
-	defer parts.Close()
+	defer closeAndLogError(parts)
 	for parts.Next() {
 		var id, raw string
 		var created int64

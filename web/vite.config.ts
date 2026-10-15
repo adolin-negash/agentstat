@@ -8,7 +8,7 @@ export default defineConfig({
       include: ["src/**/*.{ts,tsx}"],
       exclude: ["src/**/*.test.{ts,tsx}"],
       reporter: ["text", "lcov", "json-summary"],
-      thresholds: { statements: 75 },
+      thresholds: { statements: 75, functions: 76, branches: 76 },
     },
   },
 });

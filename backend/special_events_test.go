@@ -25,12 +25,12 @@ INSERT INTO session_message VALUES('m4','s','agent-switched',4,1400,'{"agent":"r
 	if err != nil {
 		t.Fatal(err)
 	}
-	src.Close()
+	closeAndLogError(src)
 	db, err := sql.Open("sqlite3", filepath.Join(dir, "app.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeAndLogError(db)
 	app := &App{db: db, source: source}
 	if err := app.initSchema(); err != nil {
 		t.Fatal(err)

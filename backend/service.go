@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -24,9 +25,29 @@ func (s *Service) Filtered(filters Filters) ([]Session, error) {
 		return nil, err
 	}
 	result := make([]Session, 0, len(sessions))
-	name := strings.ToLower(filters.Name)
+	name := filters.Name
+	var expression *regexp.Regexp
+	if filters.Regex && name != "" {
+		pattern := name
+		if !filters.CaseSensitive {
+			pattern = "(?i)" + pattern
+		}
+		expression, err = regexp.Compile(pattern)
+		if err != nil {
+			return nil, fmt.Errorf("invalid regular expression: %w", err)
+		}
+	} else if !filters.CaseSensitive {
+		name = strings.ToLower(name)
+	}
 	for _, session := range sessions {
-		if filters.From > 0 && session.Created < filters.From || filters.To > 0 && session.Created >= filters.To || len(filters.Projects) > 0 && !filters.Projects[session.ProjectID] || len(filters.Sources) > 0 && !filters.Sources[session.SourceID] || name != "" && !strings.Contains(strings.ToLower(session.Title), name) {
+		if filters.From > 0 && session.Created < filters.From || filters.To > 0 && session.Created >= filters.To || len(filters.Projects) > 0 && !filters.Projects[session.ProjectID] || len(filters.Sources) > 0 && !filters.Sources[session.SourceID] {
+			continue
+		}
+		title := session.Title
+		if !filters.CaseSensitive && expression == nil {
+			title = strings.ToLower(title)
+		}
+		if name != "" && (expression != nil && !expression.MatchString(title) || expression == nil && !strings.Contains(title, name)) {
 			continue
 		}
 		session.ModelTokens = map[string]int64{}
@@ -200,6 +221,7 @@ func (a *App) importSources(selected map[string]bool) ([]importResult, error) {
 }
 
 func (a *App) importData() error {
+	a.importedSessions = 0
 	selected := map[string]bool{}
 	for _, source := range a.sources() {
 		if source.path != "" {
@@ -212,6 +234,7 @@ func (a *App) importData() error {
 	}
 	imported := false
 	for _, result := range results {
+		a.importedSessions += result.newSessions
 		if result.err == nil {
 			imported = true
 		}

@@ -7,12 +7,16 @@ type FilterProps = {
   models: string[];
   sources: string[];
   name: string;
+  regex: boolean;
+  caseSensitive: boolean;
   from: string;
   to: string;
   onProjects: (value: string[]) => void;
   onModels: (value: string[]) => void;
   onSources: (value: string[]) => void;
   onName: (value: string) => void;
+  onRegex: (value: boolean) => void;
+  onCaseSensitive: (value: boolean) => void;
   onFrom: (value: string) => void;
   onTo: (value: string) => void;
 };
@@ -246,12 +250,16 @@ export function Filters({
   models,
   sources,
   name,
+  regex,
+  caseSensitive,
   from,
   to,
   onProjects,
   onModels,
   onSources,
   onName,
+  onRegex,
+  onCaseSensitive,
   onFrom,
   onTo,
 }: FilterProps) {
@@ -265,6 +273,8 @@ export function Filters({
             onModels([]);
             onSources([]);
             onName("");
+            onRegex(false);
+            onCaseSensitive(false);
             onFrom("");
             onTo("");
           }}
@@ -273,16 +283,39 @@ export function Filters({
         </button>
       </div>
       <div class="filters">
-        <label class="session-name-filter">
-          <span>SESSION NAME</span>
-          <input
-            type="search"
-            value={name}
-            maxLength={200}
-            placeholder="Search session names"
-            onInput={(event) => onName(event.currentTarget.value)}
-          />
-        </label>
+        <div class="session-name-filter">
+          <label htmlFor="session-name-search">SESSION NAME</label>
+          <div class="session-search-control">
+            <input
+              id="session-name-search"
+              type="search"
+              value={name}
+              maxLength={200}
+              placeholder="Search session names"
+              onInput={(event) => onName(event.currentTarget.value)}
+            />
+            <button
+              type="button"
+              class="search-mode"
+              aria-label="Regular expression"
+              title="Regular expression"
+              aria-pressed={regex}
+              onClick={() => onRegex(!regex)}
+            >
+              <span aria-hidden="true">.*</span>
+            </button>
+            <button
+              type="button"
+              class="search-mode"
+              aria-label="Case sensitive"
+              title="Case sensitive"
+              aria-pressed={caseSensitive}
+              onClick={() => onCaseSensitive(!caseSensitive)}
+            >
+              <span aria-hidden="true">Aa</span>
+            </button>
+          </div>
+        </div>
         <MultiSelectFilter
           label="SOURCES"
           choices={options.sources.map((source) => ({

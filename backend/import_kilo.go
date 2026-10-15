@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"path/filepath"
-	"strings"
 )
 
 // Kilo Code's current local history uses an OpenCode-derived SQLite schema.
@@ -16,16 +15,16 @@ func (a *App) importKilo() error {
 	if err != nil {
 		return err
 	}
-	defer src.Close()
+	defer closeAndLogError(src)
 	reader := &SourceRepository{db: src}
 	if !reader.TableExists("session") || !reader.TableExists("message") || !reader.TableExists("part") {
-		return fmt.Errorf("Kilo Code database has no supported session, message, and part tables")
+		return fmt.Errorf("kilo code database has no supported session, message, and part tables")
 	}
 	rows, err := src.Query(`SELECT s.id,COALESCE(s.title,''),COALESCE(s.project_id,''),COALESCE(p.name,''),COALESCE(s.directory,''),COALESCE(s.parent_id,''),s.time_created,s.time_updated FROM session s LEFT JOIN project p ON p.id=s.project_id ORDER BY s.time_created,s.id`)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer closeAndLogError(rows)
 	count := 0
 	for rows.Next() {
 		var s Session
@@ -68,7 +67,7 @@ func (a *App) importKiloSession(src *sql.DB, sourceID string, session Session) e
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer closeAndLogError(rows)
 	actions := []Action{}
 	usage := map[string]Tokens{}
 	model := "Unknown"
@@ -101,7 +100,7 @@ func (a *App) importKiloSession(src *sql.DB, sourceID string, session Session) e
 				usage[messageModel] = tokens
 			}
 		}
-		label := strings.Title(kind)
+		label := actionKindLabel(kind)
 		if kind == "assistant" {
 			label = "Assistant · " + messageModel
 		}
@@ -114,12 +113,12 @@ func (a *App) importKiloSession(src *sql.DB, sourceID string, session Session) e
 			var partID, partRaw string
 			var partCreated int64
 			if err := parts.Scan(&partID, &partRaw, &partCreated); err != nil {
-				parts.Close()
+				closeAndLogError(parts)
 				return err
 			}
 			var part map[string]any
 			if err := json.Unmarshal([]byte(partRaw), &part); err != nil {
-				parts.Close()
+				closeAndLogError(parts)
 				return fmt.Errorf("part %s: %w", partID, err)
 			}
 			partLabel, detail := partText(part)
@@ -127,7 +126,7 @@ func (a *App) importKiloSession(src *sql.DB, sourceID string, session Session) e
 			actions = append(actions, Action{ID: "kilo:" + partID, ParentID: id, Kind: str(part["type"]), Label: partLabel, Detail: detail, Input: input, Output: output, Status: status, Created: partCreated, Ord: len(actions) + 1})
 		}
 		err = parts.Err()
-		parts.Close()
+		closeAndLogError(parts)
 		if err != nil {
 			return err
 		}
@@ -146,7 +145,7 @@ func (a *App) importKiloSession(src *sql.DB, sourceID string, session Session) e
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer rollbackIfOpen(tx)
 	if err := a.repository().SaveSession(tx, session); err != nil {
 		return err
 	}

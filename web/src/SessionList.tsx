@@ -1,12 +1,15 @@
-import { compact, date, total } from "./format";
+import { compact, date, sourceLabel, total } from "./format";
+import { modelColors, type Theme } from "./modelColors";
 import type { Dashboard, Options } from "./types";
 
 export function SessionList({
   dashboard,
+  theme,
   options,
   onSelect,
 }: {
   dashboard: Dashboard;
+  theme: Theme;
   options: Options;
   onSelect: (id: string) => void;
 }) {
@@ -16,12 +19,12 @@ export function SessionList({
   const sourceNames = new Map(
     options.sources.map((source) => [source.id, source.name]),
   );
+  const { colors } = modelColors(dashboard, theme);
   return (
     <section id="sessions" class="sessions-panel">
       <div class="section-head">
         <div>
           <h2>Sessions</h2>
-          <p>Choose a session to inspect its activity</p>
         </div>
         <span class="count">{dashboard.sessions.length} results</span>
       </div>
@@ -36,22 +39,22 @@ export function SessionList({
             <div class="session-main">
               <strong>{session.title || "Untitled session"}</strong>
               <div>
-                {sourceNames.get(session.sourceId) === "codex"
-                  ? "Codex"
-                  : sourceNames.get(session.sourceId) === "copilot"
-                    ? "GitHub Copilot"
-                    : sourceNames.get(session.sourceId) === "opencode"
-                      ? "OpenCode"
-                      : sourceNames.get(session.sourceId) === "kilo"
-                        ? "Kilo Code"
-                        : "Unknown source"}{" "}
-                <span>·</span>{" "}
+                {sourceLabel(sourceNames.get(session.sourceId))} <span>·</span>{" "}
                 {projectNames.get(session.projectId) || "Unknown project"}{" "}
                 <span>·</span> {date(session.created)}
               </div>
             </div>
             <div class="session-model">
-              {session.models.slice(0, 2).join(", ") || session.model}
+              {(session.models.length ? session.models : [session.model])
+                .slice(0, 2)
+                .map((model, index) => (
+                  <span key={`${model}-${index}`}>
+                    {index > 0 && ", "}
+                    <span style={{ color: colors[model] || colors.Unknown }}>
+                      {model}
+                    </span>
+                  </span>
+                ))}
               {session.models.length > 2
                 ? " +" + (session.models.length - 2)
                 : ""}

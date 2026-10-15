@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -22,7 +23,7 @@ func (a *App) status(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"version": version, "source": a.source, "codexSource": a.codexSource, "copilotSource": a.copilotSource, "kiloSource": a.kiloSource, "lastImport": a.lastImport, "importError": a.importErr, "sessions": count})
+	writeJSON(w, http.StatusOK, map[string]any{"version": version, "serverAddress": a.serverAddress, "databasePath": a.databasePath, "source": a.source, "codexSource": a.codexSource, "copilotSource": a.copilotSource, "kiloSource": a.kiloSource, "lastImport": a.lastImport, "importedSessions": a.importedSessions, "importError": a.importErr, "sessions": count})
 }
 func (a *App) refresh(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -50,6 +51,26 @@ func parseFilters(r *http.Request) (Filters, error) {
 	filters.Name = strings.TrimSpace(query.Get("name"))
 	if !utf8.ValidString(filters.Name) || utf8.RuneCountInString(filters.Name) > 200 {
 		return filters, errors.New("invalid name")
+	}
+	for _, flag := range []struct {
+		name  string
+		value *bool
+	}{{"regex", &filters.Regex}, {"case_sensitive", &filters.CaseSensitive}} {
+		if values, ok := query[flag.name]; ok {
+			if len(values) != 1 || values[0] != "1" {
+				return filters, fmt.Errorf("invalid %s", flag.name)
+			}
+			*flag.value = true
+		}
+	}
+	if filters.Regex && filters.Name != "" {
+		pattern := filters.Name
+		if !filters.CaseSensitive {
+			pattern = "(?i)" + pattern
+		}
+		if _, err := regexp.Compile(pattern); err != nil {
+			return filters, errors.New("invalid regular expression")
+		}
 	}
 	for _, source := range query["source"] {
 		id, err := strconv.ParseInt(source, 10, 64)

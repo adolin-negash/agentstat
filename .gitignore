@@ -2,6 +2,7 @@ web/node_modules/
 backend/web-dist/
 web-dist/
 dist/
+.tools/
 web/coverage/
 data/
 *.db

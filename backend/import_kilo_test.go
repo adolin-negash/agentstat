@@ -28,12 +28,12 @@ INSERT INTO part VALUES('part-3','assistant-2','{"type":"text","text":"Done"}',1
 	if err != nil {
 		t.Fatal(err)
 	}
-	src.Close()
+	closeAndLogError(src)
 	db, err := sql.Open("sqlite3", filepath.Join(dir, "app.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeAndLogError(db)
 	db.SetMaxOpenConns(1)
 	app := &App{db: db, kiloSource: source}
 	if err := app.initSchema(); err != nil {
